@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "build": "npx nx build frontend --configuration=production",
+    "vercel-build": "npx prisma generate --schema=../api/prisma/schema.prisma && npm run build"
+  }
+}

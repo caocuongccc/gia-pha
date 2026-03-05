@@ -1,0 +1,114 @@
+
+generator client {
+  provider = "prisma-client-js"
+    binaryTargets = ["native", "rhel-openssl-1.0.x"]
+
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Cần cho migrate
+}
+
+// ── Enums ──────────────────────────────
+enum Gender { 
+  MALE  
+  FEMALE  
+  OTHER 
+  }
+enum RelationshipType { 
+  PARENT  
+  SPOUSE  
+  SIBLING 
+  }
+enum FamilyRole { 
+  OWNER  
+  EDITOR  
+  VIEWER 
+  }
+
+// ── Models ─────────────────────────────
+model Family {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  ownerId     String   // Supabase auth.users.id
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     Member[]
+  accessList  FamilyMember[]
+  inviteTokens InviteToken[]  // thêm dòng này
+
+  @@map("families")
+}
+
+model Member {
+  id          String    @id @default(uuid())
+  familyId    String
+  fullName    String
+  gender      Gender
+  birthDate   DateTime?
+  deathDate   DateTime?
+  photoUrl    String?
+  generation  Int       @default(1)
+  biography   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  family      Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  fromRelations Relationship[] @relation("FromMember")
+  toRelations   Relationship[] @relation("ToMember")
+
+  @@map("members")
+}
+
+model Relationship {
+  id            String           @id @default(uuid())
+  fromMemberId  String
+  toMemberId    String
+  type          RelationshipType
+  marriageDate  DateTime?
+  divorceDate   DateTime?
+  createdAt     DateTime         @default(now())
+
+  fromMember    Member @relation("FromMember", fields: [fromMemberId], references: [id])
+  toMember      Member @relation("ToMember",   fields: [toMemberId],   references: [id])
+
+  @@unique([fromMemberId, toMemberId, type])
+  @@map("relationships")
+}
+
+model FamilyMember {
+  id        String     @id @default(uuid())
+  familyId  String
+  userId    String     // Supabase auth.users.id
+  role      FamilyRole @default(VIEWER)
+  joinedAt  DateTime   @default(now())
+
+  family    Family @relation(fields: [familyId], references: [id])
+
+  @@unique([familyId, userId])
+  @@map("family_members")
+}
+
+// Thêm vào cuối schema.prisma
+
+model InviteToken {
+  id         String     @id @default(uuid())
+  token      String     @unique @default(uuid())  // UUID làm token
+  familyId   String
+  invitedBy  String                               // userId người mời
+  email      String                               // email người được mời
+  role       FamilyRole @default(VIEWER)
+  usedAt     DateTime?                            // null = chưa dùng
+  expiresAt  DateTime                             // hết hạn sau 7 ngày
+  createdAt  DateTime  @default(now())
+
+  family  Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@map("invite_tokens")
+}
