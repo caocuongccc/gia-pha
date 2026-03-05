@@ -12,7 +12,7 @@ export interface CreateMemberDto {
   generation: number;
   birthDate?: string; // ✅ optional = string | undefined
   deathDate?: string;
-  bio?: string;
+  biography?: string; // ✅ biography — khớp Prisma schema
   photoUrl?: string;
 }
 

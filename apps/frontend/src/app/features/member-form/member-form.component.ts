@@ -53,7 +53,7 @@ import { MemberService } from '../../core/services/member.service';
         <div class="field">
           <label>Tiểu sử</label>
           <textarea
-            formControlName="bio"
+            formControlName="biography"
             rows="3"
             placeholder="Ghi chú..."
           ></textarea>
@@ -184,7 +184,7 @@ export class MemberFormComponent implements OnInit {
     generation: [1, [Validators.required, Validators.min(1)]],
     birthDate: [null as string | null],
     deathDate: [null as string | null],
-    bio: [null as string | null],
+    biography: [null as string | null], // ✅ Prisma field name
     photoUrl: [null as string | null],
   });
 
@@ -197,7 +197,7 @@ export class MemberFormComponent implements OnInit {
         generation: m.generation,
         birthDate: m.birthDate,
         deathDate: m.deathDate,
-        bio: m.bio,
+        biography: m.biography,
         // ✅ Dùng ?? null trong TypeScript — giải quyết undefined không assign được string | null
         photoUrl: m.photoUrl ?? null,
       });
@@ -219,7 +219,7 @@ export class MemberFormComponent implements OnInit {
         generation: v.generation!,
         birthDate: v.birthDate ?? undefined,
         deathDate: v.deathDate ?? undefined,
-        bio: v.bio ?? undefined,
+        biography: v.biography ?? undefined,
         photoUrl: v.photoUrl ?? undefined,
       };
 

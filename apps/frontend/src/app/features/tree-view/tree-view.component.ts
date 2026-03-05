@@ -61,7 +61,9 @@ export class TreeViewComponent {
     members: Member[],
     relations: Relationship[],
   ): TreeNode {
-    const parentRelations = relations.filter((r) => r.type === 'PARENT');
+    const parentRelations = relations.filter(
+      (r) => r.type === ('PARENT' as any),
+    );
     const childrenMap = new Map<string, string[]>();
     parentRelations.forEach((r) => {
       if (!childrenMap.has(r.fromMemberId)) childrenMap.set(r.fromMemberId, []);

@@ -1,12 +1,13 @@
+// apps/frontend/src/app/core/services/auth.service.ts
 import { Injectable, signal } from '@angular/core';
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private supabase: SupabaseClient;
+  // ✅ Expose để interceptor dùng trực tiếp (không qua async)
+  readonly supabase: SupabaseClient;
 
-  // Signals — Angular 17+ reactivity
   currentUser = signal<User | null>(null);
   isLoading = signal(true);
 
@@ -14,11 +15,14 @@ export class AuthService {
     this.supabase = createClient(
       environment.supabaseUrl,
       environment.supabaseAnonKey,
-      // process.env.SUPABASE_URL!,
-      //process.env.SUPABASE_SERVICE_KEY!, // Service key (không phải anon key)
     );
 
-    // Listen auth state changes
+    // ✅ Khởi tạo session ngay từ localStorage (Supabase tự lưu)
+    this.supabase.auth.getSession().then(({ data }) => {
+      this.currentUser.set(data.session?.user ?? null);
+      this.isLoading.set(false);
+    });
+
     this.supabase.auth.onAuthStateChange((event, session) => {
       this.currentUser.set(session?.user ?? null);
       this.isLoading.set(false);
@@ -33,7 +37,16 @@ export class AuthService {
   }
 
   async signInWithEmail(email: string, password: string) {
-    return this.supabase.auth.signInWithPassword({ email, password });
+    const result = await this.supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    return result;
+  }
+
+  async signUp(email: string, password: string) {
+    return this.supabase.auth.signUp({ email, password });
   }
 
   async signOut() {

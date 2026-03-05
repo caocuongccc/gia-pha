@@ -100,6 +100,25 @@ export class FamiliesListPage implements OnInit {
   showCreate = false;
 
   async ngOnInit() {
+    // ✅ Đợi Supabase khởi tạo session xong mới gọi API
+    if (this.authSvc.isLoading()) {
+      await new Promise<void>((resolve) => {
+        const id = setInterval(() => {
+          if (!this.authSvc.isLoading()) {
+            clearInterval(id);
+            resolve();
+          }
+        }, 50);
+      });
+    }
+    // Kiểm tra thêm
+    const user = this.authSvc.currentUser();
+
+    if (!user) {
+      // Chưa login → guard đáng lẽ đã chặn, nhưng phòng hờ
+      return;
+    }
+
     await this.familySvc.loadAll();
   }
 

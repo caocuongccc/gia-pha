@@ -1,0 +1,108 @@
+// apps/api/src/dev-server.ts
+// ⚠️  QUAN TRỌNG: import dotenv PHẢI là dòng đầu tiên
+// tsx/ts-node chạy theo thứ tự import — nếu auth.ts load trước config() thì env rỗng
+
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Load .env — thử nhiều path vì tuỳ vị trí chạy lệnh
+const envResult =
+  config({ path: resolve(process.cwd(), '.env') }) ||
+  config({ path: resolve(process.cwd(), '../../.env') }) ||
+  config({ path: resolve(__dirname, '../../../.env') }) ||
+  config(); // fallback: tìm .env gần nhất
+
+// ── Kiểm tra env ngay sau khi load ──────────────────────────
+console.log('='.repeat(50));
+console.log('ENV CHECK:');
+console.log(
+  '  SUPABASE_URL       :',
+  process.env['SUPABASE_URL']
+    ? process.env['SUPABASE_URL'].slice(0, 40) + '...'
+    : '❌ MISSING',
+);
+console.log(
+  '  SUPABASE_SERVICE_KEY:',
+  process.env['SUPABASE_SERVICE_KEY']
+    ? '✅ ' + process.env['SUPABASE_SERVICE_KEY'].slice(0, 20) + '...'
+    : '❌ MISSING',
+);
+console.log(
+  '  DATABASE_URL       :',
+  process.env['DATABASE_URL'] ? '✅ present' : '❌ MISSING',
+);
+console.log('='.repeat(50));
+
+// ── Sau khi env đã load xong, MỚI import handlers ───────────
+import express from 'express';
+
+const app = express();
+app.use(express.json());
+
+// CORS
+app.use((req, res, next) => {
+  res.setHeader(
+    'Access-Control-Allow-Origin',
+    process.env['FRONTEND_URL'] ?? 'http://localhost:4200',
+  );
+  res.setHeader(
+    'Access-Control-Allow-Methods',
+    'GET,POST,PATCH,DELETE,OPTIONS',
+  );
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  next();
+});
+
+// Request logger
+app.use((req, _res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
+
+// ── Import handlers (SAU khi dotenv đã load) ────────────────
+// Dùng dynamic import để đảm bảo thứ tự
+async function startServer() {
+  const { default: families } = await import('../api/families/index.js');
+  const { default: familiesId } = await import('../api/families/[id].js');
+  const { default: members } = await import('../api/members/index.js');
+  //   const { default: membersId } = await import('../api/members/[id].js');
+  const { default: relations } = await import('../api/relations/index.js');
+  const { default: invites } = await import('../api/invites/index.js');
+  const { default: inviteAccept } = await import('../api/invites/accept.js');
+  //   const { default: chiIndex } = await import('../api/chi/index.js');
+  //   const { default: chiId } = await import('../api/chi/[id].js');
+  //   const { default: phaiIndex } = await import('../api/phai/index.js');
+  //   const { default: phaiId } = await import('../api/phai/[id].js');
+
+  // Routes — thứ tự quan trọng: specific trước, generic sau
+  app.all('/api/families/:id', (req, res) =>
+    familiesId(req as any, res as any),
+  );
+  app.all('/api/families', (req, res) => families(req as any, res as any));
+  //   app.all('/api/members/:id', (req, res) => membersId(req as any, res as any));
+  app.all('/api/members', (req, res) => members(req as any, res as any));
+  app.all('/api/relations', (req, res) => relations(req as any, res as any));
+  app.all('/api/invites/accept', (req, res) =>
+    inviteAccept(req as any, res as any),
+  );
+  app.all('/api/invites', (req, res) => invites(req as any, res as any));
+  //   app.all('/api/chi/:id', (req, res) => chiId(req as any, res as any));
+  //   app.all('/api/chi', (req, res) => chiIndex(req as any, res as any));
+  //   app.all('/api/phai/:id', (req, res) => phaiId(req as any, res as any));
+  //   app.all('/api/phai', (req, res) => phaiIndex(req as any, res as any));
+
+  // Health check
+  app.get('/api/health', (_req, res) =>
+    res.json({ ok: true, time: new Date() }),
+  );
+
+  app.listen(3000, () => {
+    console.log('');
+    console.log('🚀 API running at http://localhost:3000');
+    console.log('   Test: http://localhost:3000/api/health');
+    console.log('');
+  });
+}
+
+startServer().catch(console.error);

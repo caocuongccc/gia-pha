@@ -1,21 +1,24 @@
-// ── Enums ──────────────────────────────────────
+// libs/shared-types/src/index.ts
+
 export enum Gender {
   MALE = 'MALE',
   FEMALE = 'FEMALE',
   OTHER = 'OTHER',
 }
+
+// ✅ Giữ đúng Prisma enum: PARENT (không phải PARENT_CHILD)
 export enum RelationshipType {
   PARENT = 'PARENT',
   SPOUSE = 'SPOUSE',
   SIBLING = 'SIBLING',
 }
+
 export enum FamilyRole {
   OWNER = 'OWNER',
   EDITOR = 'EDITOR',
   VIEWER = 'VIEWER',
 }
 
-// ── Core models ────────────────────────────────
 export interface Family {
   id: string;
   name: string;
@@ -35,8 +38,8 @@ export interface Member {
   birthDate: string | null;
   deathDate: string | null;
   photoUrl: string | null;
-  bio: string | null;
-  gedcomId: string | null;
+  // ✅ Prisma schema dùng 'biography' — đổi tên cho đúng
+  biography: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -50,7 +53,6 @@ export interface Relationship {
   divorceDate?: string;
 }
 
-// ── DTO (Data Transfer Objects) ────────────────
 export interface CreateMemberDto {
   fullName: string;
   gender: Gender;
@@ -64,7 +66,6 @@ export interface CreateRelationshipDto {
   type: RelationshipType;
 }
 
-// ── API Response wrapper ───────────────────────
 export interface ApiResponse<T> {
   data: T;
   error?: string;

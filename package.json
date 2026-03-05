@@ -7,7 +7,10 @@
     "prisma:migrate": "prisma migrate dev --schema=apps/api/prisma/schema.prisma",
     "prisma:deploy": "prisma migrate deploy --schema=apps/api/prisma/schema.prisma",
     "prisma:studio": "prisma studio --schema=apps/api/prisma/schema.prisma",
-    "prisma:reset": "prisma migrate reset --schema=apps/api/prisma/schema.prisma"
+    "prisma:reset": "prisma migrate reset --schema=apps/api/prisma/schema.prisma",
+    "api:dev": "vercel dev --listen 3000",
+    "fe:dev": "npx nx serve frontend",
+    "dev": "concurrently \"npm run api:dev\" \"npm run fe:dev\""
   },
   "private": true,
   "devDependencies": {
@@ -44,6 +47,7 @@
     "@typescript-eslint/utils": "^8.40.0",
     "@vercel/node": "^5.6.10",
     "angular-eslint": "^21.0.1",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.3.1",
     "eslint": "^9.8.0",
     "eslint-config-prettier": "^10.0.0",

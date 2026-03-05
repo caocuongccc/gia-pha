@@ -1,7 +1,6 @@
 // apps/frontend/src/app/app.routes.ts
-
 import { Routes } from '@angular/router';
-import { authInterceptor } from './core/auth/auth.interceptor';
+import { authGuard } from './core/auth/auth.guard';
 
 export const routes: Routes = [
   {
@@ -9,13 +8,19 @@ export const routes: Routes = [
     redirectTo: 'families',
     pathMatch: 'full',
   },
+  // ✅ Trang login — cần có để redirect khi chưa đăng nhập
+  {
+    path: 'login',
+    loadComponent: () =>
+      import('./features/auth/login.page').then((m) => m.LoginPage),
+  },
   {
     path: 'families',
     loadComponent: () =>
       import('./features/families/pages/families-list.page').then(
         (m) => m.FamiliesListPage,
       ),
-    canActivate: [authInterceptor],
+    canActivate: [authGuard], // ✅ dùng authGuard thật, không phải authInterceptor
   },
   {
     path: 'families/:id',
@@ -23,7 +28,7 @@ export const routes: Routes = [
       import('./features/families/pages/family-detail.page').then(
         (m) => m.FamilyDetailPage,
       ),
-    canActivate: [authInterceptor],
+    canActivate: [authGuard],
   },
   {
     path: 'share/:token',
@@ -31,7 +36,6 @@ export const routes: Routes = [
       import('./features/families/pages/public-tree.page').then(
         (m) => m.PublicTreePage,
       ),
-    // Không cần authGuard — public page
   },
   {
     path: 'auth/google/callback',
