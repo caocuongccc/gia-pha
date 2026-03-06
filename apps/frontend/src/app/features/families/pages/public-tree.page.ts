@@ -1,108 +1,165 @@
+// apps/frontend/src/app/features/families/pages/public-tree.page.ts
+// Route: /share/:token  (token = familyId)
+// Không cần đăng nhập — server phải check isPublic=true
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
 import { TreeViewComponent } from '../../tree-view/tree-view.component';
-import { ExportButtonsComponent } from '../../tree-view/export-buttons.component';
-import type { Member, Relationship } from '@gia-pha/shared-types';
+import type { Member, Relationship, Family } from '@gia-pha/shared-types';
 
 @Component({
   selector: 'app-public-tree',
   standalone: true,
-  imports: [CommonModule, TreeViewComponent, ExportButtonsComponent],
+  imports: [CommonModule, TreeViewComponent],
   template: `
-    @if (loading()) {
-      <div class="loading-screen">Đang tải cây gia phả...</div>
-    } @else if (error()) {
-      <div class="error-screen">
-        <h2>Không tìm thấy</h2>
-        <p>Link chia sẻ không hợp lệ hoặc đã hết hạn</p>
-      </div>
-    } @else {
-      <div class="public-layout">
-        <header class="public-header">
-          <span class="logo">🌳 Cây Gia Phả</span>
-          <h1>{{ familyName() }}</h1>
-          <!-- ✅ svgElementId string, không phải svgRef -->
-          <app-export-buttons
-            svgElementId="family-tree-svg"
-            [familyName]="familyName()"
-          />
-        </header>
+    <div class="pub-layout">
+      <!-- Header -->
+      <header class="pub-header">
+        <span class="pub-logo">🌳</span>
+        @if (family()) {
+          <div class="pub-title">
+            <h1>{{ family()!.name }}</h1>
+            <span class="pub-sub">{{ members().length }} thành viên</span>
+          </div>
+        }
+        <span class="pub-badge">Chỉ xem · Không cần đăng nhập</span>
+      </header>
 
-        <!-- ✅ Truyền members và relations — required inputs của TreeViewComponent -->
-        @if (members().length > 0) {
+      <!-- Body -->
+      <div class="pub-body">
+        @if (loading()) {
+          <div class="pub-center">
+            <div class="spinner"></div>
+            <p>Đang tải gia phả...</p>
+          </div>
+        }
+
+        @if (!loading() && error()) {
+          <div class="pub-center pub-error">
+            <p>🔒 {{ error() }}</p>
+          </div>
+        }
+
+        @if (!loading() && !error() && members().length > 0) {
           <app-tree-view
             [members]="members()"
             [relations]="relations()"
-            [viewOnly]="true"
+            [viewOnly]="false"
           />
         }
       </div>
-    }
+    </div>
   `,
   styles: [
     `
-      .loading-screen,
-      .error-screen {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100vh;
-        color: #64748b;
-      }
-      .public-layout {
+      .pub-layout {
         display: flex;
         flex-direction: column;
         height: 100vh;
         background: #09090f;
+        color: #e2e8f0;
       }
-      .public-header {
+      .pub-header {
         display: flex;
         align-items: center;
         gap: 16px;
-        padding: 12px 20px;
-        background: #0f1120;
-        border-bottom: 1px solid #252d45;
+        padding: 10px 20px;
+        background: #0c1120;
+        border-bottom: 1px solid #1e293b;
         flex-shrink: 0;
       }
-      .logo {
-        font-size: 18px;
+      .pub-logo {
+        font-size: 22px;
       }
-      h1 {
+      .pub-title {
         flex: 1;
-        font-size: 16px;
-        color: #e2e8f0;
+      }
+      .pub-title h1 {
         margin: 0;
+        font-size: 15px;
+      }
+      .pub-sub {
+        font-size: 11px;
+        color: #475569;
+      }
+      .pub-badge {
+        font-size: 10px;
+        color: #22c55e;
+        background: #0a1a0e;
+        border: 1px solid #166534;
+        padding: 3px 10px;
+        border-radius: 12px;
+      }
+      .pub-body {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+      }
+      .pub-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 16px;
+        color: #64748b;
+      }
+      .pub-error {
+        color: #ef4444;
+      }
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #1e293b;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
     `,
   ],
 })
 export class PublicTreePage implements OnInit {
-  private route = inject(ActivatedRoute);
   private http = inject(HttpClient);
+  private route = inject(ActivatedRoute);
 
-  // ✅ Dùng signals thay vì plain properties
-  familyName = signal('');
+  family = signal<Family | null>(null);
   members = signal<Member[]>([]);
   relations = signal<Relationship[]>([]);
   loading = signal(true);
-  error = signal(false);
+  error = signal('');
 
   async ngOnInit() {
-    const token = this.route.snapshot.params['token'];
+    const familyId = this.route.snapshot.params['token'];
+    if (!familyId) {
+      this.error.set('Link không hợp lệ.');
+      this.loading.set(false);
+      return;
+    }
     try {
-      const res: any = await firstValueFrom(
-        this.http.get(`${environment.apiUrl}/api/families/public/${token}`),
+      const [fam, mem, rel] = await Promise.all([
+        this.http.get<any>(`/api/public/families/${familyId}`).toPromise(),
+        this.http
+          .get<any>(`/api/public/families/${familyId}/members`)
+          .toPromise(),
+        this.http
+          .get<any>(`/api/public/families/${familyId}/relations`)
+          .toPromise(),
+      ]);
+      this.family.set(fam?.data ?? null);
+      this.members.set(mem?.data ?? []);
+      this.relations.set(rel?.data ?? []);
+    } catch (e: any) {
+      this.error.set(
+        e?.status === 403 || e?.status === 404
+          ? 'Gia phả này chưa được chia sẻ công khai.'
+          : 'Lỗi khi tải gia phả. Thử lại sau.',
       );
-      this.familyName.set(res.data.name);
-      this.members.set(res.data.members ?? []);
-      this.relations.set(res.data.relations ?? []);
-    } catch {
-      this.error.set(true);
     } finally {
       this.loading.set(false);
     }

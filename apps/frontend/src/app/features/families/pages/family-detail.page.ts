@@ -19,6 +19,7 @@ import { RelationFormComponent } from '../../member-form/relation-form.component
 import { ExportButtonsComponent } from '../../tree-view/export-buttons.component';
 import { ManageChiPhaiComponent } from '../../settings/manage-chi-phai.component';
 import type { Member } from '@gia-pha/shared-types';
+import { HttpClient } from '@angular/common/http';
 
 type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
 type ViewMode = 'tree' | 'generation' | 'organization';
@@ -81,6 +82,51 @@ type ViewMode = 'tree' | 'generation' | 'organization';
           <button class="btn-outline" (click)="togglePanel('chiPhai')">
             Chi — Phái
           </button>
+          <!-- Share button -->
+          <div class="share-wrap" style="position:relative">
+            <button
+              class="btn-share"
+              [class.is-public]="familySvc.selectedFamily()?.isPublic"
+              (click)="sharePopupOpen.set(!sharePopupOpen())"
+            >
+              🔗
+              {{
+                familySvc.selectedFamily()?.isPublic
+                  ? 'Đang chia sẻ'
+                  : 'Chia sẻ'
+              }}
+            </button>
+
+            @if (sharePopupOpen()) {
+              <div class="share-popup" (click)="$event.stopPropagation()">
+                <div class="share-row">
+                  <span class="share-label">Cho phép xem công khai</span>
+                  <button
+                    class="share-toggle"
+                    [class.on]="familySvc.selectedFamily()?.isPublic"
+                    (click)="togglePublic()"
+                  >
+                    {{ familySvc.selectedFamily()?.isPublic ? 'BẬT ✓' : 'TẮT' }}
+                  </button>
+                </div>
+                @if (familySvc.selectedFamily()?.isPublic) {
+                  <div class="share-url-row">
+                    <input
+                      class="share-url-input"
+                      [value]="shareUrl()"
+                      readonly
+                    />
+                    <button class="share-copy-btn" (click)="copyShareUrl()">
+                      {{ copied() ? '✓ Copied!' : 'Copy link' }}
+                    </button>
+                  </div>
+                  <p class="share-hint">
+                    Bất kỳ ai có link đều xem được, không cần đăng nhập.
+                  </p>
+                }
+              </div>
+            }
+          </div>
           <button class="btn-primary" (click)="openAddMember()">+ Thêm</button>
         </div>
       </header>
@@ -681,6 +727,91 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         overflow-y: auto;
         padding: 16px;
       }
+
+      .btn-share {
+        padding: 6px 12px;
+        font-size: 12px;
+        background: none;
+        border: 1px solid #334155;
+        color: #94a3b8;
+        border-radius: 5px;
+        cursor: pointer;
+      }
+      .btn-share:hover {
+        border-color: #60a5fa;
+        color: #60a5fa;
+      }
+      .btn-share.is-public {
+        border-color: #22c55e;
+        color: #22c55e;
+      }
+      .share-popup {
+        position: absolute;
+        top: 38px;
+        right: 0;
+        z-index: 300;
+        background: #0c1828;
+        border: 1px solid #1e3a6e;
+        border-radius: 10px;
+        padding: 14px 16px;
+        min-width: 340px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .share-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .share-label {
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      .share-toggle {
+        padding: 4px 12px;
+        font-size: 11px;
+        border-radius: 12px;
+        cursor: pointer;
+        border: 1px solid #334155;
+        background: #0a0f1e;
+        color: #64748b;
+      }
+      .share-toggle.on {
+        border-color: #22c55e;
+        color: #22c55e;
+        background: #0a1a0e;
+      }
+      .share-url-row {
+        display: flex;
+        gap: 6px;
+      }
+      .share-url-input {
+        flex: 1;
+        background: #060d1a;
+        border: 1px solid #1e293b;
+        color: #60a5fa;
+        border-radius: 5px;
+        padding: 6px 10px;
+        font-size: 11px;
+        font-family: monospace;
+      }
+      .share-copy-btn {
+        background: #1e3a6e;
+        border: 1px solid #3b82f6;
+        color: #60a5fa;
+        border-radius: 5px;
+        padding: 5px 10px;
+        cursor: pointer;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .share-hint {
+        font-size: 10px;
+        color: #475569;
+        margin: 0;
+      }
     `,
   ],
 })
@@ -691,11 +822,34 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   chiPhaiSvc = inject(ChiPhaiService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private http = inject(HttpClient);
 
   familyId = '';
   viewMode = signal<ViewMode>('tree');
   activePanel = signal<SidePanel>('none');
+  sharePopupOpen = signal(false);
+  copied = signal(false);
 
+  shareUrl = computed(() => {
+    const fam = this.familySvc.selectedFamily();
+    return fam ? `${window.location.origin}/public/${fam.id}` : '';
+  });
+
+  async togglePublic() {
+    const f = this.familySvc.selectedFamily();
+    if (!f) return;
+    await this.http
+      .patch(`/api/families/${this.familyId}`, { isPublic: !f.isPublic })
+      .toPromise();
+    await this.familySvc.loadOne(this.familyId);
+  }
+
+  copyShareUrl() {
+    navigator.clipboard.writeText(this.shareUrl()).then(() => {
+      this.copied.set(true);
+      setTimeout(() => this.copied.set(false), 2000);
+    });
+  }
   orgView = computed(() =>
     this.chiPhaiSvc.chiList().map((chi) => ({
       chi,
