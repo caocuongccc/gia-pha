@@ -60,7 +60,7 @@ export class ExportButtonsComponent {
 
   exportSvg() {
     const el = this.getSvgElement();
-    //if (el) this.exportSvc.exportSvg(el, this.familyName());
+    if (el) this.exportSvc.exportPng(el, this.familyName(), 2);
   }
 
   exportPdf() {

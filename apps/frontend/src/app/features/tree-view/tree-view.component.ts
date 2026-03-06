@@ -61,7 +61,7 @@ interface TreeNode {
     </div>
 
     <!-- ── Main tree SVG ──────────────────────────────────────── -->
-    <svg #svgRef class="tree-svg"></svg>
+    <svg #svgRef id="family-tree-svg" class="tree-svg"></svg>
 
     <!-- ── Subtree preview overlay ────────────────────────────── -->
     @if (previewVisible()) {
@@ -757,11 +757,21 @@ export class TreeViewComponent {
     // Mở collapsed ancestors (BFS qua _children)
     this.expandPathTo(member.id);
 
-    // Lưu selectedId trước khi render để toggleExpand có thể re-apply sau
+    // Lưu selectedId trước khi render
     this.selectedId.set(member.id);
     this.renderTree(this.members(), this.relations());
 
-    // Sau khi D3 paint xong thì highlight + pan — giống hệt onNodeClick
+    // Bước 1: fitView toàn bộ cây (animated) để user thấy cấu trúc mới
+    if (this.svgRef && this.zoomRef) {
+      const el = this.svgRef.nativeElement;
+      const svg = d3.select<SVGSVGElement, unknown>(el);
+      const g = svg.select<SVGGElement>('g.tree-root');
+      const W = el.clientWidth || 900;
+      const H = el.clientHeight || 600;
+      this.fitView(svg, g, W, H, this.zoomRef, true);
+    }
+
+    // Bước 2: sau khi fitView xong (450ms) → highlight + pan đến node
     setTimeout(() => {
       const node = this.rootHierarchy
         ?.descendants()
@@ -774,12 +784,13 @@ export class TreeViewComponent {
       this.applyHighlight(node, ancestorIds);
       this.memberClicked.emit(member);
       this.panToNode(node);
-    }, 0);
+    }, 520);
   }
 
   // ── Expand collapsed ancestors (BFS qua cả _children) ───────
   private expandPathTo(targetId: string) {
     if (!this.rootHierarchy) return;
+    // BFS qua cả children lẫn _children để reach tất cả nodes kể cả collapsed
     const all: any[] = [];
     const q = [this.rootHierarchy as any];
     while (q.length) {
@@ -795,15 +806,17 @@ export class TreeViewComponent {
         parentOf.set(c.data.id, n),
       );
     });
+    // Trace từ target → root, thêm TẤT CẢ ancestors vào userExpandedIds
+    // (không chỉ những node có _children — vì depth 9+ vẫn có .children sau each())
     let cur = all.find((n) => n.data.id === targetId);
     while (cur) {
       const p = parentOf.get(cur.data.id);
       if (!p) break;
+      this.userExpandedIds.add(p.data.id);
+      this.userCollapsedIds.delete(p.data.id);
       if (p._children) {
         p.children = p._children;
         p._children = undefined;
-        this.userExpandedIds.add(p.data.id);
-        this.userCollapsedIds.delete(p.data.id);
       }
       cur = p;
     }
