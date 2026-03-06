@@ -16,15 +16,19 @@ import { AuthService } from '../../core/services/auth.service';
         <p class="subtitle">Lưu giữ và kết nối các thế hệ</p>
 
         @if (error()) {
-          <div class="error-msg">{{ error() }}</div>
+          <div class="error-msg" [class.success]="error()!.startsWith('✅')">
+            {{ error() }}
+          </div>
         }
 
+        <!-- Google login -->
         <button
           class="btn-google"
           (click)="loginGoogle()"
           [disabled]="loading()"
         >
           @if (loading()) {
+            <div class="btn-spinner"></div>
             <span>Đang xử lý...</span>
           } @else {
             <svg width="18" height="18" viewBox="0 0 24 24">
@@ -49,44 +53,63 @@ import { AuthService } from '../../core/services/auth.service';
           }
         </button>
 
-        <div class="divider">hoặc</div>
+        <div class="divider"><span>hoặc dùng email</span></div>
 
-        <!-- Thêm vào template, thay thế nút email hiện tại -->
+        <!-- Mode toggle — pill style -->
         <div class="mode-toggle">
           <button
+            class="toggle-btn"
             [class.active]="mode() === 'login'"
             (click)="mode.set('login')"
           >
+            <span class="toggle-icon">🔑</span>
             Đăng nhập
           </button>
           <button
+            class="toggle-btn"
             [class.active]="mode() === 'register'"
             (click)="mode.set('register')"
           >
+            <span class="toggle-icon">✨</span>
             Đăng ký
           </button>
         </div>
 
+        <!-- Email form -->
         <div class="email-form">
-          <input #emailInput type="email" placeholder="Email" class="input" />
+          <input
+            #emailInput
+            type="email"
+            placeholder="Email"
+            class="input"
+            autocomplete="email"
+          />
           <input
             #passInput
             type="password"
             placeholder="Mật khẩu"
             class="input"
+            autocomplete="current-password"
+            (keydown.enter)="
+              mode() === 'login'
+                ? loginEmail(emailInput.value, passInput.value)
+                : registerEmail(emailInput.value, passInput.value)
+            "
           />
 
           @if (mode() === 'login') {
             <button
               class="btn-email"
               (click)="loginEmail(emailInput.value, passInput.value)"
+              [disabled]="loading()"
             >
               Đăng nhập
             </button>
           } @else {
             <button
-              class="btn-email"
+              class="btn-email register"
               (click)="registerEmail(emailInput.value, passInput.value)"
+              [disabled]="loading()"
             >
               Tạo tài khoản
             </button>
@@ -102,75 +125,150 @@ import { AuthService } from '../../core/services/auth.service';
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #09090f;
+        background: radial-gradient(ellipse at 50% 0%, #0f1e38 0%, #09090f 60%);
         font-family: system-ui, sans-serif;
       }
+
       .login-card {
-        background: #0f1120;
-        border: 1px solid #252d45;
-        border-radius: 12px;
-        padding: 48px 40px;
+        background: linear-gradient(160deg, #0f1120 0%, #0a0d1a 100%);
+        border: 1px solid #1e293b;
+        border-radius: 16px;
+        padding: 44px 36px 36px;
         width: 360px;
         text-align: center;
+        box-shadow:
+          0 24px 60px rgba(0, 0, 0, 0.5),
+          0 0 0 1px rgba(59, 130, 246, 0.05);
       }
+
       .logo {
-        font-size: 48px;
-        margin-bottom: 12px;
+        font-size: 46px;
+        margin-bottom: 10px;
+        display: block;
       }
+
       h1 {
         color: #e2e8f0;
-        font-size: 24px;
-        margin: 0 0 8px;
+        font-size: 22px;
+        margin: 0 0 6px;
+        font-weight: 700;
+        letter-spacing: -0.3px;
       }
+
       .subtitle {
         color: #64748b;
         font-size: 13px;
-        margin-bottom: 32px;
+        margin: 0 0 28px;
       }
+
+      /* Google button */
       .btn-google {
         width: 100%;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 10px;
-        padding: 12px 20px;
+        padding: 11px 20px;
         background: #fff;
         color: #1a1a1a;
         border: none;
-        border-radius: 6px;
+        border-radius: 8px;
         font-size: 14px;
         font-weight: 500;
         cursor: pointer;
-        transition: opacity 0.15s;
+        transition: all 0.15s;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
       }
       .btn-google:hover {
-        opacity: 0.9;
+        opacity: 0.92;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
       }
       .btn-google:disabled {
         opacity: 0.5;
         cursor: not-allowed;
       }
-      .divider {
-        color: #334155;
-        font-size: 12px;
-        margin: 20px 0;
-        position: relative;
+
+      .btn-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid #ccc;
+        border-top-color: #333;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+        flex-shrink: 0;
       }
-      .divider::before,
-      .divider::after {
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Divider */
+      .divider {
+        position: relative;
+        margin: 22px 0 18px;
+        text-align: center;
+      }
+      .divider::before {
         content: '';
         position: absolute;
         top: 50%;
-        width: 42%;
+        left: 0;
+        right: 0;
         height: 1px;
         background: #1e293b;
       }
-      .divider::before {
-        left: 0;
+      .divider span {
+        position: relative;
+        background: #0f1120;
+        padding: 0 12px;
+        font-size: 11px;
+        color: #475569;
+        letter-spacing: 0.5px;
       }
-      .divider::after {
-        right: 0;
+
+      /* ── Mode toggle — pill ── */
+      .mode-toggle {
+        display: flex;
+        gap: 6px;
+        background: #060d1a;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        padding: 4px;
+        margin-bottom: 16px;
       }
+      .toggle-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 9px 12px;
+        border: none;
+        border-radius: 7px;
+        background: transparent;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .toggle-btn:hover:not(.active) {
+        color: #94a3b8;
+        background: #0f1728;
+      }
+      .toggle-btn.active {
+        background: #1e3a6e;
+        color: #60a5fa;
+        box-shadow:
+          0 2px 8px rgba(59, 130, 246, 0.2),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      }
+      .toggle-icon {
+        font-size: 14px;
+      }
+
+      /* Email form */
       .email-form {
         display: flex;
         flex-direction: column;
@@ -178,40 +276,65 @@ import { AuthService } from '../../core/services/auth.service';
       }
       .input {
         width: 100%;
-        padding: 10px 12px;
-        background: #141828;
-        border: 1px solid #252d45;
-        border-radius: 6px;
+        padding: 10px 13px;
+        background: #060d1a;
+        border: 1px solid #1e293b;
+        border-radius: 7px;
         color: #e2e8f0;
         font-size: 13px;
         outline: none;
         box-sizing: border-box;
+        transition: border-color 0.15s;
       }
       .input:focus {
         border-color: #3b82f6;
       }
+      .input::placeholder {
+        color: #334155;
+      }
+
       .btn-email {
         width: 100%;
-        padding: 10px;
+        padding: 11px;
         background: #3b82f6;
         color: #fff;
         border: none;
-        border-radius: 6px;
+        border-radius: 7px;
         font-size: 14px;
+        font-weight: 500;
         cursor: pointer;
-        margin-top: 4px;
+        margin-top: 2px;
+        transition: background 0.15s;
+      }
+      .btn-email:hover {
+        background: #2563eb;
       }
       .btn-email:disabled {
         opacity: 0.5;
+        cursor: not-allowed;
       }
+      .btn-email.register {
+        background: linear-gradient(135deg, #6366f1, #3b82f6);
+      }
+      .btn-email.register:hover {
+        background: linear-gradient(135deg, #4f46e5, #2563eb);
+      }
+
+      /* Error / success */
       .error-msg {
-        background: #1f0a0a;
+        background: #1a0808;
         border: 1px solid #7f1d1d;
         color: #fca5a5;
-        padding: 10px;
-        border-radius: 6px;
+        padding: 10px 14px;
+        border-radius: 7px;
         font-size: 12px;
         margin-bottom: 16px;
+        text-align: left;
+      }
+      .error-msg.success {
+        background: #0a1a0e;
+        border-color: #166534;
+        color: #4ade80;
       }
     `,
   ],
@@ -219,13 +342,12 @@ import { AuthService } from '../../core/services/auth.service';
 export class LoginPage implements OnInit {
   private auth = inject(AuthService);
   private router = inject(Router);
-  // Thêm vào LoginPage class
+
   mode = signal<'login' | 'register'>('login');
   loading = signal(false);
   error = signal<string | null>(null);
 
   ngOnInit() {
-    // Nếu đã đăng nhập rồi → về trang chính
     if (this.auth.currentUser()) {
       this.router.navigate(['/families']);
     }
@@ -237,7 +359,6 @@ export class LoginPage implements OnInit {
     try {
       const { error } = await this.auth.signInWithGoogle();
       if (error) this.error.set(error.message);
-      // Supabase tự redirect sau khi OAuth thành công
     } catch (e: any) {
       this.error.set(e.message);
       this.loading.set(false);
@@ -253,11 +374,8 @@ export class LoginPage implements OnInit {
     this.error.set(null);
     try {
       const { error } = await this.auth.signInWithEmail(email, password);
-      if (error) {
-        this.error.set(error.message);
-      } else {
-        this.router.navigate(['/families']);
-      }
+      if (error) this.error.set(error.message);
+      else this.router.navigate(['/families']);
     } catch (e: any) {
       this.error.set(e.message);
     } finally {
@@ -265,30 +383,24 @@ export class LoginPage implements OnInit {
     }
   }
 
-  // Thêm vào login.page.ts
-  async signUp(email: string, password: string) {
-    this.loading.set(true);
-    const { error } = await this.auth.signUp(email, password);
-    if (error) this.error.set(error.message);
-    else this.error.set(null); // Supabase gửi email xác nhận
-    this.loading.set(false);
-  }
-
-  // Thêm vào login.page.ts
   async registerEmail(email: string, password: string) {
     if (!email || !password) return;
     this.loading.set(true);
     this.error.set(null);
     try {
       const { error } = await this.auth.signUp(email, password);
-      if (error) {
-        this.error.set(error.message);
-      } else {
-        // Supabase gửi email xác nhận
-        this.error.set('✅ Kiểm tra email để xác nhận tài khoản!');
-      }
+      if (error) this.error.set(error.message);
+      else this.error.set('✅ Kiểm tra email để xác nhận tài khoản!');
     } finally {
       this.loading.set(false);
     }
+  }
+
+  async signUp(email: string, password: string) {
+    this.loading.set(true);
+    const { error } = await this.auth.signUp(email, password);
+    if (error) this.error.set(error.message);
+    else this.error.set(null);
+    this.loading.set(false);
   }
 }
