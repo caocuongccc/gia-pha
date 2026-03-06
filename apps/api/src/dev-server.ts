@@ -1,18 +1,12 @@
 // apps/api/src/dev-server.ts
-// ⚠️  QUAN TRỌNG: import dotenv PHẢI là dòng đầu tiên
-// tsx/ts-node chạy theo thứ tự import — nếu auth.ts load trước config() thì env rỗng
-
 import { config } from 'dotenv';
 import { resolve } from 'path';
 
-// Load .env — thử nhiều path vì tuỳ vị trí chạy lệnh
-const envResult =
-  config({ path: resolve(process.cwd(), '.env') }) ||
+config({ path: resolve(process.cwd(), '.env') }) ||
   config({ path: resolve(process.cwd(), '../../.env') }) ||
   config({ path: resolve(__dirname, '../../../.env') }) ||
-  config(); // fallback: tìm .env gần nhất
+  config();
 
-// ── Kiểm tra env ngay sau khi load ──────────────────────────
 console.log('='.repeat(50));
 console.log('ENV CHECK:');
 console.log(
@@ -23,9 +17,7 @@ console.log(
 );
 console.log(
   '  SUPABASE_SERVICE_KEY:',
-  process.env['SUPABASE_SERVICE_KEY']
-    ? '✅ ' + process.env['SUPABASE_SERVICE_KEY'].slice(0, 20) + '...'
-    : '❌ MISSING',
+  process.env['SUPABASE_SERVICE_KEY'] ? '✅ present' : '❌ MISSING',
 );
 console.log(
   '  DATABASE_URL       :',
@@ -33,13 +25,10 @@ console.log(
 );
 console.log('='.repeat(50));
 
-// ── Sau khi env đã load xong, MỚI import handlers ───────────
 import express from 'express';
-
 const app = express();
 app.use(express.json());
 
-// CORS
 app.use((req, res, next) => {
   res.setHeader(
     'Access-Control-Allow-Origin',
@@ -54,67 +43,63 @@ app.use((req, res, next) => {
   next();
 });
 
-// Request logger
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
-// ── Import handlers (SAU khi dotenv đã load) ────────────────
-// Dùng dynamic import để đảm bảo thứ tự
 async function startServer() {
-  ``;
   const { default: familiesId } = await import('../api/families/[id].js');
-  const { default: membersId } = await import('../api/members/[id].js');
-  const { default: chiId } = await import('../api/chi/[id].js');
-  const { default: phaiId } = await import('../api/phai/[id].js');
-  const { default: relationsId } = await import('../api/relations/[id].js');
+  const { default: familiesTree } = await import(
+    '../api/families/[id]/tree.js'
+  );
   const { default: families } = await import('../api/families/index.js');
   const { default: members } = await import('../api/members/index.js');
+  const { default: membersId } = await import('../api/members/[id].js');
   const { default: relations } = await import('../api/relations/index.js');
-  const { default: invites } = await import('../api/invites/index.js');
+  const { default: relationsId } = await import('../api/relations/[id].js');
   const { default: inviteAccept } = await import('../api/invites/accept.js');
+  const { default: invites } = await import('../api/invites/index.js');
   const { default: chiIndex } = await import('../api/chi/index.js');
+  const { default: chiId } = await import('../api/chi/[id].js');
   const { default: phaiIndex } = await import('../api/phai/index.js');
-  const { default: relationsIndex } = await import('../api/relations/index.js');
+  const { default: phaiId } = await import('../api/phai/[id].js');
 
-  // Routes — thứ tự quan trọng: specific trước, generic sau
-  app.all('/api/families/:id', (req, res) =>
-    familiesId(req as any, res as any),
+  // Helper: inject :id vào req.query để các handler dùng req.query.id
+  const injectId = (handler: any) => (req: any, res: any) => {
+    req.query = { ...req.query, id: req.params.id };
+    return handler(req, res);
+  };
+
+  // ── Routes: specific trước, generic sau ──────────────────────
+  // families
+  app.all('/api/families/:id/tree', (req, res) =>
+    familiesTree(req as any, res as any),
   );
+  app.all('/api/families/:id', injectId(familiesId));
   app.all('/api/families', (req, res) => families(req as any, res as any));
+
+  // members — members/[id].ts dùng req.query.id nên cần inject
+  app.all('/api/members/:id', injectId(membersId));
   app.all('/api/members', (req, res) => members(req as any, res as any));
+
+  // relations — [id].ts dùng URL parsing, không cần inject; nhưng inject cũng không hại
+  app.all('/api/relations/:id', injectId(relationsId));
   app.all('/api/relations', (req, res) => relations(req as any, res as any));
+
+  // chi/phai — [id].ts dùng URL parsing
+  app.all('/api/chi/:id', injectId(chiId));
+  app.all('/api/chi', (req, res) => chiIndex(req as any, res as any));
+
+  app.all('/api/phai/:id', injectId(phaiId));
+  app.all('/api/phai', (req, res) => phaiIndex(req as any, res as any));
+
+  // invites
   app.all('/api/invites/accept', (req, res) =>
     inviteAccept(req as any, res as any),
   );
   app.all('/api/invites', (req, res) => invites(req as any, res as any));
-  app.all('/api/chi', (req, res) => chiIndex(req as any, res as any));
-  app.all('/api/phai', (req, res) => phaiIndex(req as any, res as any));
 
-  app.all('/api/relations', (req, res) =>
-    relationsIndex(req as any, res as any),
-  );
-  // dev-server.ts — thay tất cả route [id] thành:
-  app.all('/api/members/:id', (req: any, res) => {
-    req.query = { ...req.query, id: req.params.id }; // inject id vào query
-    membersId(req as any, res as any);
-  });
-
-  app.all('/api/families/:id', (req: any, res) => {
-    req.query = { ...req.query, id: req.params.id };
-    familiesId(req as any, res as any);
-  });
-
-  app.all('/api/chi/:id', (req: any, res) => {
-    req.query = { ...req.query, id: req.params.id };
-    chiId(req as any, res as any);
-  });
-
-  app.all('/api/phai/:id', (req: any, res) => {
-    req.query = { ...req.query, id: req.params.id };
-    phaiId(req as any, res as any);
-  });
   // Health check
   app.get('/api/health', (_req, res) =>
     res.json({ ok: true, time: new Date() }),

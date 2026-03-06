@@ -4,20 +4,22 @@ import {
   input,
   output,
   inject,
-  OnInit,
+  effect,
   signal,
+  computed,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { MemberService } from '../../core/services/member.service';
 import { ChiPhaiService } from '../../core/services/chi-phai.service';
+import { PhotoPickerComponent } from '../../shared/components/photo-picker/photo-picker.component';
 import type { Member } from '@gia-pha/shared-types';
 import { Gender } from '@gia-pha/shared-types';
 
 @Component({
   selector: 'app-member-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule],
+  imports: [CommonModule, ReactiveFormsModule, PhotoPickerComponent],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()" class="member-form">
       <!-- ── Thông tin cơ bản ─────────────────────── -->
@@ -85,6 +87,14 @@ import { Gender } from '@gia-pha/shared-types';
         <div class="field">
           <label>Nơi an táng</label>
           <input formControlName="burialPlace" placeholder="Thôn X, xã Y..." />
+        </div>
+
+        <div class="field">
+          <label>Ảnh đại diện</label>
+          <app-photo-picker
+            [value]="form.get('photoUrl')!.value"
+            (changed)="form.patchValue({ photoUrl: $event })"
+          />
         </div>
 
         <div class="field">
@@ -173,7 +183,11 @@ import { Gender } from '@gia-pha/shared-types';
           [disabled]="form.invalid || saving()"
         >
           {{
-            saving() ? 'Đang lưu...' : editId() ? 'Cập nhật' : 'Thêm thành viên'
+            saving()
+              ? 'Đang lưu...'
+              : editMember()
+                ? 'Cập nhật'
+                : 'Thêm thành viên'
           }}
         </button>
       </div>
@@ -333,10 +347,13 @@ import { Gender } from '@gia-pha/shared-types';
     `,
   ],
 })
-export class MemberFormComponent implements OnInit {
+export class MemberFormComponent {
+  // ── Inputs / Outputs ─────────────────────────────────────────
   familyId = input.required<string>();
-  editId = input<string | null>(null);
-  submitted = output<Member>();
+  editMember = input<Member | null>(null); // ← đổi từ editId (string) sang editMember (Member)
+
+  submitted = output<Member>(); // backward-compat: emit full Member sau khi save
+  saved = output<void>(); // simple notify (dùng ở chỗ không cần Member)
   cancelled = output<void>();
 
   private fb = inject(FormBuilder);
@@ -346,63 +363,95 @@ export class MemberFormComponent implements OnInit {
   saving = signal(false);
   error = signal('');
 
-  form = this.fb.group({
-    fullName: ['', Validators.required],
-    alias: [''],
-    gender: [Gender.MALE, Validators.required],
-    generation: [1, [Validators.required, Validators.min(1)]],
-    childOrder: [null as number | null],
-    birthDate: [''],
-    deathDate: [''],
-    deathYearAm: [''],
-    burialPlace: [''],
-    biography: [''],
-    isOutPerson: [false],
-    coupleGroupId: [''],
-    chiId: [''],
-    phaiId: [''],
+  // availablePhai tự tính từ chiId đang chọn
+  availablePhai = computed(() => {
+    const chiId = this.form?.get('chiId')?.value;
+    if (!chiId) return [];
+    return this.chiSvc.chiList().find((c) => c.id === chiId)?.phaiList ?? [];
   });
 
-  availablePhai = signal<any[]>([]);
+  form = this.fb.group({
+    fullName: ['', Validators.required],
+    alias: ['' as string],
+    gender: [Gender.MALE as string, Validators.required],
+    generation: [1, [Validators.required, Validators.min(1)]],
+    childOrder: [null as number | null],
+    birthDate: ['' as string],
+    deathDate: ['' as string],
+    deathYearAm: ['' as string],
+    burialPlace: ['' as string],
+    biography: ['' as string],
+    photoUrl: ['' as string],
+    isOutPerson: [false],
+    coupleGroupId: ['' as string],
+    chiId: ['' as string],
+    phaiId: ['' as string],
+  });
 
-  async ngOnInit() {
-    await this.chiSvc.load(this.familyId());
+  constructor() {
+    // ── KEY FIX: effect() thay ngOnInit() ────────────────────────
+    // ngOnInit chỉ chạy 1 lần khi component tạo ra → form không reload
+    // khi bấm sang người khác vì Angular tái dùng cùng instance.
+    // effect() chạy lại MỖI KHI editMember() signal thay đổi.
+    effect(() => {
+      const familyId = this.familyId();
+      const m = this.editMember();
 
-    if (this.editId()) {
-      const m = await this.memberSvc.getById(this.editId()!);
-      this.form.patchValue({
-        fullName: m.fullName,
-        alias: m.alias ?? '',
-        gender: m.gender,
-        generation: m.generation,
-        childOrder: m.childOrder,
-        birthDate: m.birthDate ? m.birthDate.slice(0, 10) : '',
-        deathDate: m.deathDate ? m.deathDate.slice(0, 10) : '',
-        deathYearAm: m.deathYearAm ?? '',
-        burialPlace: m.burialPlace ?? '',
-        biography: m.biography ?? '',
-        isOutPerson: m.isOutPerson,
-        coupleGroupId: m.coupleGroupId ?? '',
-        chiId: m.chiId ?? '',
-        phaiId: m.phaiId ?? '',
+      // Load chi/phái nếu chưa có (fire-and-forget, không block effect)
+      if (!this.chiSvc.chiList().length) {
+        this.chiSvc.load(familyId);
+      }
+
+      // Reset về blank để không còn sót dữ liệu người trước
+      this.form.reset({
+        fullName: '',
+        alias: '',
+        gender: Gender.MALE,
+        generation: 1,
+        childOrder: null,
+        birthDate: '',
+        deathDate: '',
+        deathYearAm: '',
+        burialPlace: '',
+        biography: '',
+        photoUrl: '',
+        isOutPerson: false,
+        coupleGroupId: '',
+        chiId: '',
+        phaiId: '',
       });
-      this.updateAvailablePhai(m.chiId ?? '');
-    }
+
+      if (m) {
+        this.form.patchValue({
+          fullName: m.fullName,
+          alias: m.alias ?? '',
+          gender: m.gender,
+          generation: m.generation,
+          childOrder: m.childOrder ?? null,
+          birthDate: m.birthDate ? m.birthDate.slice(0, 10) : '',
+          deathDate: m.deathDate ? m.deathDate.slice(0, 10) : '',
+          deathYearAm: m.deathYearAm ?? '',
+          burialPlace: m.burialPlace ?? '',
+          biography: m.biography ?? '',
+          photoUrl: m.photoUrl ?? '',
+          isOutPerson: m.isOutPerson,
+          coupleGroupId: m.coupleGroupId ?? '',
+          chiId: m.chiId ?? '',
+          phaiId: m.phaiId ?? '',
+        });
+      }
+    });
   }
 
+  // ── Helpers ──────────────────────────────────────────────────
   onChiChange() {
     this.form.patchValue({ phaiId: '' });
-    this.updateAvailablePhai(this.form.value.chiId ?? '');
-  }
-
-  updateAvailablePhai(chiId: string) {
-    const chi = this.chiSvc.chiList().find((c) => c.id === chiId);
-    this.availablePhai.set(chi?.phaiList ?? []);
   }
 
   genGroupId() {
     this.form.patchValue({ coupleGroupId: crypto.randomUUID() });
   }
+
   clearGroupId() {
     this.form.patchValue({ coupleGroupId: '' });
   }
@@ -425,6 +474,7 @@ export class MemberFormComponent implements OnInit {
     );
   }
 
+  // ── Submit ────────────────────────────────────────────────────
   async submit() {
     if (this.form.invalid) return;
     this.saving.set(true);
@@ -444,17 +494,19 @@ export class MemberFormComponent implements OnInit {
         childOrder: v.childOrder ? Number(v.childOrder) : null,
         burialPlace: v.burialPlace || null,
         biography: v.biography || null,
+        photoUrl: v.photoUrl || null,
         isOutPerson: v.isOutPerson ?? false,
         coupleGroupId: v.coupleGroupId || null,
         chiId: v.chiId || null,
         phaiId: v.phaiId || null,
       };
 
-      const result = this.editId()
-        ? await this.memberSvc.update(this.editId()!, dto)
+      const result = this.editMember()
+        ? await this.memberSvc.update(this.editMember()!.id, dto)
         : await this.memberSvc.create(dto);
 
-      this.submitted.emit(result);
+      this.submitted.emit(result); // emit Member cho parent cũ
+      this.saved.emit(); // emit void cho parent mới
     } catch (e: any) {
       this.error.set(e?.error?.error ?? 'Có lỗi xảy ra');
     } finally {

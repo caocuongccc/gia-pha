@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ChiPhaiService } from '../core/services/chi-phai.service';
+import { ChiPhaiService } from '../../../core/services/chi-phai.service';
 
 @Component({
   selector: 'app-chi-phai-selector',

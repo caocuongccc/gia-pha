@@ -329,7 +329,7 @@ type ViewMode = 'tree' | 'generation' | 'organization';
               ) {
                 <app-member-form
                   [familyId]="familyId"
-                  [editId]="memberSvc.selectedMember()!.id"
+                  [editMember]="memberSvc.selectedMember()"
                   (submitted)="onMemberSaved()"
                   (cancelled)="closePanel()"
                 />

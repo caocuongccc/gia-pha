@@ -20,6 +20,47 @@ interface TreeNode {
   selector: 'app-tree-view',
   standalone: true,
   template: `
+    <!-- ── Search ─────────────────────────────────────────── -->
+    <div class="search-wrap">
+      <div class="search-row">
+        <span class="search-icon">🔍</span>
+        <input
+          class="search-input"
+          placeholder="Tìm theo tên..."
+          [value]="searchQuery()"
+          (input)="onSearch($any($event.target).value)"
+          (focus)="searchOpen.set(searchResults().length > 0)"
+          (blur)="onSearchBlur()"
+        />
+        @if (searchQuery()) {
+          <button class="search-clear" (mousedown)="clearSearch()">✕</button>
+        }
+      </div>
+      @if (searchOpen()) {
+        @if (searchResults().length > 0) {
+          <div class="search-dropdown">
+            @for (m of searchResults(); track m.id) {
+              <div class="search-item" (mousedown)="selectResult(m)">
+                <span class="si-gen">Đ{{ m.generation }}</span>
+                <span class="si-name">{{ m.fullName }}</span>
+                @if (m.alias) {
+                  <span class="si-alias">({{ m.alias }})</span>
+                }
+                @if (m.chi) {
+                  <span class="si-chi">{{ m.chi.name }}</span>
+                }
+              </div>
+            }
+          </div>
+        }
+        @if (searchQuery().length >= 2 && searchResults().length === 0) {
+          <div class="search-dropdown">
+            <div class="search-empty">Không tìm thấy "{{ searchQuery() }}"</div>
+          </div>
+        }
+      }
+    </div>
+
     <svg #svgRef id="family-tree-svg" class="tree-svg"></svg>
 
     <!-- Tooltip khi hover -->
@@ -38,17 +79,123 @@ interface TreeNode {
   styles: [
     `
       :host {
-        display: block;
+        display: flex;
+        flex-direction: column;
         overflow: hidden;
         position: relative;
         height: 100%;
       }
       .tree-svg {
+        flex: 1;
         width: 100%;
-        height: 100%;
-        min-height: 600px;
+        min-height: 0;
       }
 
+      /* Search */
+      .search-wrap {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 50;
+        width: 300px;
+      }
+      .search-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: #0c1828;
+        border: 1px solid #3b4a6e;
+        border-radius: 20px;
+        padding: 0 14px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        transition: border-color 0.15s;
+      }
+      .search-row:focus-within {
+        border-color: #3b82f6;
+      }
+      .search-icon {
+        font-size: 13px;
+      }
+      .search-input {
+        flex: 1;
+        background: none;
+        border: none;
+        outline: none;
+        color: #e2e8f0;
+        font-size: 12px;
+        padding: 9px 0;
+      }
+      .search-input::placeholder {
+        color: #475569;
+      }
+      .search-clear {
+        background: none;
+        border: none;
+        color: #475569;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 0;
+        line-height: 1;
+      }
+      .search-clear:hover {
+        color: #e2e8f0;
+      }
+      .search-dropdown {
+        background: #0c1828;
+        border: 1px solid #1e3a6e;
+        border-radius: 10px;
+        margin-top: 4px;
+        max-height: 240px;
+        overflow-y: auto;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      }
+      .search-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 14px;
+        cursor: pointer;
+        border-bottom: 1px solid #1a2540;
+      }
+      .search-item:last-child {
+        border-bottom: none;
+      }
+      .search-item:hover {
+        background: #0f1e38;
+      }
+      .si-gen {
+        font-size: 9px;
+        color: #d29922;
+        background: #1a1200;
+        padding: 1px 5px;
+        border-radius: 6px;
+        flex-shrink: 0;
+      }
+      .si-name {
+        font-size: 12px;
+        color: #e2e8f0;
+        flex: 1;
+      }
+      .si-alias {
+        font-size: 10px;
+        color: #64748b;
+      }
+      .si-chi {
+        font-size: 9px;
+        color: #4ade80;
+        background: #0a1a0a;
+        padding: 1px 6px;
+        border-radius: 6px;
+      }
+      .search-empty {
+        padding: 14px;
+        font-size: 12px;
+        color: #475569;
+        text-align: center;
+      }
+
+      /* Tooltip */
       .node-tooltip {
         position: absolute;
         background: #0f1728;
@@ -88,14 +235,23 @@ export class TreeViewComponent {
   viewOnly = input<boolean>(false);
   memberClicked = output<Member>();
 
-  // ── Internal state ─────────────────────────────────────────
+  // ── Expand state ─────────────────────────────────────────────
+  private userExpandedIds = new Set<string>();
+  private userCollapsedIds = new Set<string>();
+
+  // ── Internal state ───────────────────────────────────────────
   private selectedId = signal<string | null>(null);
   private highlightIds = signal<Set<string>>(new Set());
+
+  // ── Search state ─────────────────────────────────────────────
+  searchQuery = signal('');
+  searchResults = signal<Member[]>([]);
+  searchOpen = signal(false);
 
   tooltipVisible = signal(false);
   tooltipData = signal({ name: '', meta: '', chi: '' });
 
-  // D3 selections — reuse khi chỉ update highlight
+  // D3 refs
   private nodeSelection!: d3.Selection<
     SVGGElement,
     d3.HierarchyPointNode<TreeNode>,
@@ -109,6 +265,7 @@ export class TreeViewComponent {
     unknown
   >;
   private rootHierarchy!: d3.HierarchyPointNode<TreeNode>;
+  private zoomRef!: d3.ZoomBehavior<SVGSVGElement, unknown>;
 
   constructor() {
     effect(() => {
@@ -122,7 +279,7 @@ export class TreeViewComponent {
     });
   }
 
-  // ── Build cây từ relationships ──────────────────────────────
+  // ── Build cây từ relationships ───────────────────────────────
   private buildHierarchy(
     members: Member[],
     relations: Relationship[],
@@ -138,8 +295,6 @@ export class TreeViewComponent {
     const roots = members.filter((m) => !childIds.has(m.id));
     const rootMember =
       roots.sort((a, b) => a.generation - b.generation)[0] ?? members[0];
-
-    // Dùng visited set thay depth limit — tránh vòng lặp, không giới hạn số đời
     const visited = new Set<string>();
     const buildNode = (id: string): TreeNode => {
       const member = memberMap.get(id)!;
@@ -147,16 +302,12 @@ export class TreeViewComponent {
       const kids = (childrenMap.get(id) ?? []).filter(
         (cid) => !visited.has(cid),
       );
-      return {
-        id,
-        data: member,
-        children: kids.map((cid) => buildNode(cid)),
-      };
+      return { id, data: member, children: kids.map((cid) => buildNode(cid)) };
     };
     return buildNode(rootMember.id);
   }
 
-  // ── Tìm đường từ node đến root ──────────────────────────────
+  // ── Tìm đường từ node đến root ───────────────────────────────
   private getAncestorIds(node: d3.HierarchyPointNode<TreeNode>): Set<string> {
     const ids = new Set<string>();
     let cur: d3.HierarchyNode<TreeNode> | null = node;
@@ -167,7 +318,7 @@ export class TreeViewComponent {
     return ids;
   }
 
-  // ── Render ──────────────────────────────────────────────────
+  // ── Render tree ──────────────────────────────────────────────
   private renderTree(members: Member[], relations: Relationship[]) {
     const svgEl = this.svgRef.nativeElement;
     const svg = d3.select(svgEl);
@@ -182,22 +333,23 @@ export class TreeViewComponent {
 
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.1, 3])
+      .scaleExtent([0.05, 3])
       .on('zoom', (e) => g.attr('transform', e.transform));
-
     svg.call(zoom);
+    this.zoomRef = zoom;
 
-    // ── Hierarchy ──────────────────────────────────────────────
-    const hierarchy = this.buildHierarchy(members, relations);
-    const root = d3.hierarchy(hierarchy);
+    // ── Hierarchy + collapse logic ────────────────────────────
+    const root = d3.hierarchy(this.buildHierarchy(members, relations));
 
-    // Mặc định collapse các node sau đời thứ 8 — tránh render quá nặng
-    // Người dùng bấm vào node để expand
     const INITIAL_DEPTH = 8;
     root.each((d: any) => {
-      if (d.depth >= INITIAL_DEPTH && d.children) {
-        d._children = d.children; // lưu lại
-        d.children = undefined; // ẩn đi
+      if (!d.children) return;
+      const autoCollapse = d.depth >= INITIAL_DEPTH;
+      const forceExpand = this.userExpandedIds.has(d.data.id);
+      const forceCollapse = this.userCollapsedIds.has(d.data.id);
+      if ((autoCollapse && !forceExpand) || forceCollapse) {
+        d._children = d.children;
+        d.children = undefined;
       }
     });
 
@@ -205,18 +357,13 @@ export class TreeViewComponent {
     treeLayout(root);
     this.rootHierarchy = root as d3.HierarchyPointNode<TreeNode>;
 
-    // ── Links ──────────────────────────────────────────────────
+    // ── Links ─────────────────────────────────────────────────
     this.linkSelection = g
       .append('g')
       .attr('class', 'links')
       .selectAll<SVGPathElement, d3.HierarchyLink<TreeNode>>('path')
       .data(root.links())
       .join('path')
-      .attr(
-        'class',
-        (d) =>
-          `link link-${(d.source as any).data.id}-${(d.target as any).data.id}`,
-      )
       .attr('d', (d: any) => {
         const sx = d.source.x,
           sy = d.source.y + NODE_H;
@@ -227,10 +374,9 @@ export class TreeViewComponent {
       })
       .attr('fill', 'none')
       .attr('stroke', '#2a3a4a')
-      .attr('stroke-width', 1.5)
-      .attr('stroke-dasharray', 'none');
+      .attr('stroke-width', 1.5);
 
-    // ── Nodes ──────────────────────────────────────────────────
+    // ── Nodes ─────────────────────────────────────────────────
     this.nodeSelection = g
       .append('g')
       .attr('class', 'nodes')
@@ -243,18 +389,18 @@ export class TreeViewComponent {
         (d) => `translate(${(d as any).x - NODE_W / 2},${(d as any).y})`,
       )
       .style('cursor', 'pointer')
-      .on('click', (event, d) => {
-        event.stopPropagation();
+      .on('click', (ev, d) => {
+        ev.stopPropagation();
         this.onNodeClick(d);
       })
-      .on('dblclick', (event, d) => {
-        event.stopPropagation();
-        this.onNodeDblClick(d);
+      .on('dblclick', (ev, d) => {
+        ev.stopPropagation();
+        this.toggleExpand(d);
       })
-      .on('mouseover', (event, d) => this.showTooltip(event, d))
+      .on('mouseover', (ev, d) => this.showTooltip(ev, d))
       .on('mouseout', () => this.tooltipVisible.set(false));
 
-    // Background card
+    // Card
     this.nodeSelection
       .append('rect')
       .attr('class', 'node-bg')
@@ -267,7 +413,7 @@ export class TreeViewComponent {
       .attr('stroke', (d) => (d.data.data.deathDate ? '#334155' : '#2a3a50'))
       .attr('stroke-width', 1.5);
 
-    // Avatar clip
+    // Avatar
     this.nodeSelection
       .append('clipPath')
       .attr('id', (d) => `clip-${d.data.id}`)
@@ -275,7 +421,6 @@ export class TreeViewComponent {
       .attr('cx', 28)
       .attr('cy', NODE_H / 2)
       .attr('r', 22);
-
     this.nodeSelection
       .append('image')
       .attr(
@@ -312,12 +457,12 @@ export class TreeViewComponent {
       .attr('fill', '#64748b')
       .text((d) => {
         const m = d.data.data;
-        const born = m.birthDate ? new Date(m.birthDate).getFullYear() : '?';
-        const died = m.deathDate ? new Date(m.deathDate).getFullYear() : '';
-        return died ? `${born}–${died}` : `${born}`;
+        const b = m.birthDate ? new Date(m.birthDate).getFullYear() : '?';
+        const x = m.deathDate ? new Date(m.deathDate).getFullYear() : '';
+        return x ? `${b}–${x}` : `${b}`;
       });
 
-    // Chi/Phái badge nhỏ
+    // Chi badge
     this.nodeSelection
       .append('text')
       .attr('x', 58)
@@ -336,69 +481,111 @@ export class TreeViewComponent {
       .attr('text-anchor', 'end')
       .text((d) => `Đời ${d.data.data.generation}`);
 
-    // Nút expand — hiện dưới node khi có con bị ẩn (double-click để mở)
+    // ── Expand button ──────────────────────────────────────────
     const expandBtn = this.nodeSelection.filter((d: any) => !!d._children);
 
     expandBtn
       .append('rect')
-      .attr('x', NODE_W / 2 - 28)
-      .attr('y', NODE_H + 6)
-      .attr('width', 56)
+      .attr('x', NODE_W / 2 - 30)
+      .attr('y', NODE_H + 5)
+      .attr('width', 60)
       .attr('height', 18)
       .attr('rx', 9)
       .attr('fill', '#1e3a6e')
       .attr('stroke', '#3b82f6')
       .attr('stroke-width', 1)
-      .style('cursor', 'pointer');
+      .style('cursor', 'pointer')
+      .on('click', (ev, d) => {
+        ev.stopPropagation();
+        this.toggleExpand(d);
+      });
 
     expandBtn
       .append('text')
       .attr('x', NODE_W / 2)
-      .attr('y', NODE_H + 19)
+      .attr('y', NODE_H + 18)
       .attr('text-anchor', 'middle')
       .attr('font-size', '10px')
       .attr('fill', '#60a5fa')
-      .style('cursor', 'pointer')
-      .text((d: any) => `▼ ${d._children?.length} con`);
+      .style('pointer-events', 'none') // click đi xuyên xuống rect bên dưới
+      .text((d: any) => `▼ ${d._children?.length ?? ''} con`);
 
-    // ── Dismiss khi click nền ──────────────────────────────────
+    // Dismiss
     svg.on('click', () => this.clearHighlight());
 
-    // ── Center ─────────────────────────────────────────────────
-    const bounds = (g.node() as SVGGElement).getBBox();
-    const tx = W / 2 - bounds.x - bounds.width / 2;
-    svg.call(zoom.transform, d3.zoomIdentity.translate(tx, 40));
+    // ── Fit toàn bộ cây vào viewport ─────────────────────────
+    this.fitView(svg, g, W, H, zoom);
   }
 
-  // ── Click: LUÔN highlight + emit, dù node có con hay không ──
+  // ── Fit view — scale + center toàn bộ cây ───────────────────
+  private fitView(
+    svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+    g: d3.Selection<SVGGElement, unknown, null, undefined>,
+    W: number,
+    H: number,
+    zoom: d3.ZoomBehavior<SVGSVGElement, unknown>,
+    animated = false,
+  ) {
+    const bounds = (g.node() as SVGGElement).getBBox();
+    if (!bounds.width || !bounds.height) return;
+    const pad = 60;
+    const scale = Math.min(
+      (W - pad * 2) / bounds.width,
+      (H - pad * 2) / bounds.height,
+      1,
+    );
+    const tx = W / 2 - (bounds.x + bounds.width / 2) * scale;
+    const ty = pad - bounds.y * scale;
+    const t = d3.zoomIdentity.translate(tx, ty).scale(scale);
+    if (animated) {
+      svg.transition().duration(450).call(zoom.transform, t);
+    } else {
+      svg.call(zoom.transform, t);
+    }
+  }
+
+  // ── Click: highlight + emit ──────────────────────────────────
   private onNodeClick(d: d3.HierarchyPointNode<TreeNode>) {
-    const member = d.data.data;
     const ancestorIds = this.getAncestorIds(d);
-    this.selectedId.set(member.id);
+    this.selectedId.set(d.data.id);
     this.highlightIds.set(ancestorIds);
     this.applyHighlight(d, ancestorIds);
-    this.memberClicked.emit(member);
+    this.memberClicked.emit(d.data.data);
+    this.searchOpen.set(false);
   }
 
-  // ── Double-click: expand / collapse con ───────────────────
-  private onNodeDblClick(d: d3.HierarchyPointNode<TreeNode>) {
-    const dAny = d as any;
-    if (dAny._children) {
-      d.children = dAny._children;
-      dAny._children = undefined;
-    } else if (d.children?.length) {
-      dAny._children = d.children;
-      d.children = undefined;
-    } else {
-      return; // không có con, không làm gì
+  // ── Toggle expand — mở/đóng toàn bộ cùng depth ──────────────
+  private toggleExpand(clicked: d3.HierarchyPointNode<TreeNode>) {
+    const cAny = clicked as any;
+    const isOpening = !!cAny._children;
+    if (!cAny._children && !clicked.children?.length) return;
+
+    // Lấy tất cả node cùng depth trong cây hiện tại
+    const peers = (this.rootHierarchy?.descendants() ?? []).filter(
+      (n: any) => n.depth === clicked.depth,
+    );
+
+    for (const n of peers as any[]) {
+      if (isOpening) {
+        if (n._children) {
+          n.children = n._children;
+          n._children = undefined;
+          this.userExpandedIds.add(n.data.id);
+          this.userCollapsedIds.delete(n.data.id);
+        }
+      } else {
+        if (n.children?.length) {
+          n._children = n.children;
+          n.children = undefined;
+          this.userCollapsedIds.add(n.data.id);
+          this.userExpandedIds.delete(n.data.id);
+        }
+      }
     }
-    this.rerenderKeepSelection();
-  }
 
-  private rerenderKeepSelection() {
+    // Re-render + fit lại
     const prevId = this.selectedId();
     this.renderTree(this.members(), this.relations());
-    // Khôi phục highlight sau khi re-render
     if (prevId) {
       const node = this.rootHierarchy
         ?.descendants()
@@ -409,22 +596,134 @@ export class TreeViewComponent {
     }
   }
 
+  // ── Search ──────────────────────────────────────────────────
+  onSearch(q: string) {
+    this.searchQuery.set(q);
+    if (q.trim().length < 1) {
+      this.searchResults.set([]);
+      this.searchOpen.set(false);
+      return;
+    }
+    const lower = q.trim().toLowerCase();
+    this.searchResults.set(
+      this.members()
+        .filter(
+          (m) =>
+            m.fullName.toLowerCase().includes(lower) ||
+            ((m as any).alias ?? '').toLowerCase().includes(lower),
+        )
+        .sort((a, b) => a.generation - b.generation)
+        .slice(0, 12),
+    );
+    this.searchOpen.set(true);
+  }
+
+  clearSearch() {
+    this.searchQuery.set('');
+    this.searchResults.set([]);
+    this.searchOpen.set(false);
+    this.clearHighlight();
+  }
+
+  onSearchBlur() {
+    // Delay để mousedown trên dropdown kịp fire trước khi blur đóng dropdown
+    setTimeout(() => this.searchOpen.set(false), 200);
+  }
+
+  selectResult(member: Member) {
+    this.searchQuery.set(member.fullName);
+    this.searchOpen.set(false);
+
+    // Mở collapsed ancestors trên đường đến node này
+    this.expandPathTo(member.id);
+
+    // Re-render
+    this.selectedId.set(member.id);
+    this.renderTree(this.members(), this.relations());
+
+    // Highlight + pan sau khi DOM cập nhật
+    requestAnimationFrame(() => {
+      const node = this.rootHierarchy
+        ?.descendants()
+        .find((d: any) => d.data.id === member.id) as
+        | d3.HierarchyPointNode<TreeNode>
+        | undefined;
+      if (!node) return;
+      const ancestorIds = this.getAncestorIds(node);
+      this.highlightIds.set(ancestorIds);
+      this.applyHighlight(node, ancestorIds);
+      this.memberClicked.emit(member);
+      this.panToNode(node);
+    });
+  }
+
+  // Expand tất cả collapsed ancestors từ root → target
+  private expandPathTo(targetId: string) {
+    if (!this.rootHierarchy) return;
+    // BFS qua cả _children để có cây đầy đủ
+    const all: any[] = [];
+    const q = [this.rootHierarchy as any];
+    while (q.length) {
+      const n = q.shift();
+      all.push(n);
+      [...(n.children ?? []), ...(n._children ?? [])].forEach((c: any) =>
+        q.push(c),
+      );
+    }
+    const parentOf = new Map<string, any>();
+    all.forEach((n) => {
+      [...(n.children ?? []), ...(n._children ?? [])].forEach((c: any) =>
+        parentOf.set(c.data.id, n),
+      );
+    });
+    // Trace path target → root
+    let cur = all.find((n) => n.data.id === targetId);
+    while (cur) {
+      const p = parentOf.get(cur.data.id);
+      if (!p) break;
+      if (p._children) {
+        p.children = p._children;
+        p._children = undefined;
+        this.userExpandedIds.add(p.data.id);
+        this.userCollapsedIds.delete(p.data.id);
+      }
+      cur = p;
+    }
+  }
+
+  // Pan SVG đến node (giữ zoom level hiện tại)
+  private panToNode(node: d3.HierarchyPointNode<TreeNode>) {
+    if (!this.svgRef || !this.zoomRef) return;
+    const el = this.svgRef.nativeElement;
+    const svg = d3.select(el);
+    const W = el.clientWidth || 900;
+    const H = el.clientHeight || 600;
+    const cur = d3.zoomTransform(el);
+    const nx = (node as any).x * cur.k + cur.x;
+    const ny = (node as any).y * cur.k + cur.y;
+    svg
+      .transition()
+      .duration(500)
+      .call(
+        this.zoomRef.translateBy,
+        (W / 2 - nx) / cur.k,
+        (H / 3 - ny) / cur.k,
+      );
+  }
+
+  // ── Apply highlight ──────────────────────────────────────────
   private applyHighlight(
     selected: d3.HierarchyPointNode<TreeNode>,
     ancestorIds: Set<string>,
   ) {
     if (!this.nodeSelection || !this.linkSelection) return;
 
-    // ── Nodes ──────────────────────────────────────────────────
     this.nodeSelection.each(function (d) {
-      const id = d.data.id;
       const node = d3.select(this);
+      const isSelected = d.data.id === selected.data.id;
+      const isAncestor = !isSelected && ancestorIds.has(d.data.id);
+      const isDimmed = !ancestorIds.has(d.data.id);
 
-      const isSelected = id === selected.data.id;
-      const isAncestor = !isSelected && ancestorIds.has(id);
-      const isDimmed = !ancestorIds.has(id);
-
-      // Card background
       node
         .select('rect.node-bg')
         .transition()
@@ -443,34 +742,26 @@ export class TreeViewComponent {
         })
         .attr('stroke-width', isSelected ? 2.5 : isAncestor ? 2 : 1.5);
 
-      // Opacity
       node
         .transition()
         .duration(250)
         .attr('opacity', isDimmed ? 0.35 : 1);
     });
 
-    // ── Links ──────────────────────────────────────────────────
     this.linkSelection.each(function (d) {
-      const srcId = (d.source as any).data.id;
-      const tgtId = (d.target as any).data.id;
-
-      // Link "sáng" = cả 2 đầu đều nằm trong ancestor path
-      const isHighlighted = ancestorIds.has(srcId) && ancestorIds.has(tgtId);
-
+      const lit =
+        ancestorIds.has((d.source as any).data.id) &&
+        ancestorIds.has((d.target as any).data.id);
       d3.select(this)
         .transition()
         .duration(250)
-        .attr('stroke', isHighlighted ? '#3b82f6' : '#2a3a4a')
-        .attr('stroke-width', isHighlighted ? 2.5 : 1.5)
-        .attr('opacity', isHighlighted ? 1 : 0.2);
+        .attr('stroke', lit ? '#3b82f6' : '#2a3a4a')
+        .attr('stroke-width', lit ? 2.5 : 1.5)
+        .attr('opacity', lit ? 1 : 0.2);
     });
 
-    // ── Thêm icon "bạn đang ở đây" trên selected node ─────────
     const svgG = d3.select(this.svgRef.nativeElement).select('g.tree-root');
     svgG.selectAll('.selected-marker').remove();
-
-    const NODE_W = 148;
     svgG
       .append('circle')
       .attr('class', 'selected-marker')
@@ -487,9 +778,7 @@ export class TreeViewComponent {
   private clearHighlight() {
     this.selectedId.set(null);
     this.highlightIds.set(new Set());
-
     if (!this.nodeSelection || !this.linkSelection) return;
-
     this.nodeSelection.each(function (d) {
       const node = d3.select(this);
       node.transition().duration(200).attr('opacity', 1);
@@ -501,42 +790,36 @@ export class TreeViewComponent {
         .attr('stroke', d.data.data.deathDate ? '#334155' : '#2a3a50')
         .attr('stroke-width', 1.5);
     });
-
     this.linkSelection
       .transition()
       .duration(200)
       .attr('stroke', '#2a3a4a')
       .attr('stroke-width', 1.5)
       .attr('opacity', 1);
-
     d3.select(this.svgRef.nativeElement).select('.selected-marker').remove();
   }
 
-  // ── Tooltip ────────────────────────────────────────────────
+  // ── Tooltip ─────────────────────────────────────────────────
   private showTooltip(event: MouseEvent, d: d3.HierarchyPointNode<TreeNode>) {
     const m = d.data.data;
-    const born = m.birthDate ? new Date(m.birthDate).getFullYear() : '?';
-    const died = m.deathDate ? new Date(m.deathDate).getFullYear() : '';
-    const lifespan = died ? `${born}–${died}` : `${born}`;
-
+    const b = m.birthDate ? new Date(m.birthDate).getFullYear() : '?';
+    const x = m.deathDate ? new Date(m.deathDate).getFullYear() : '';
     this.tooltipData.set({
       name: m.fullName + ((m as any).alias ? ` (${(m as any).alias})` : ''),
       meta:
-        `Đời ${m.generation} · ${lifespan}` +
+        `Đời ${m.generation} · ${x ? `${b}–${x}` : b}` +
         ((m as any).burialPlace ? ` · ${(m as any).burialPlace}` : ''),
       chi: [(m as any).chi?.name, (m as any).phai?.name]
         .filter(Boolean)
         .join(' / '),
     });
     this.tooltipVisible.set(true);
-
-    // Position tooltip gần chuột
     if (this.tooltipEl) {
       const el = this.tooltipEl.nativeElement;
       const host = (
         this.svgRef.nativeElement.parentElement as HTMLElement
       ).getBoundingClientRect();
-      el.style.left = `${event.clientX - host.left + 12}px`;
+      el.style.left = `${event.clientX - host.left + 14}px`;
       el.style.top = `${event.clientY - host.top - 10}px`;
     }
   }
