@@ -1,8 +1,6 @@
-
 generator client {
-  provider = "prisma-client-js"
-    binaryTargets = ["native", "rhel-openssl-1.0.x"]
-
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
 }
 
 datasource db {
@@ -12,53 +10,73 @@ datasource db {
 }
 
 // ── Enums ──────────────────────────────
-enum Gender { 
-  MALE  
-  FEMALE  
-  OTHER 
-  }
-enum RelationshipType { 
-  PARENT  
-  SPOUSE  
-  SIBLING 
-  }
-enum FamilyRole { 
-  OWNER  
-  EDITOR  
-  VIEWER 
-  }
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum RelationshipType {
+  PARENT
+  SPOUSE
+  SIBLING
+}
+
+enum FamilyRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
 
 // ── Models ─────────────────────────────
 model Family {
   id          String   @id @default(uuid())
   name        String
   description String?
-  ownerId     String   // Supabase auth.users.id
+  ownerId     String // Supabase auth.users.id
   isPublic    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  members     Member[]
-  accessList  FamilyMember[]
-  inviteTokens InviteToken[]  // thêm dòng này
+  members      Member[]
+  accessList   FamilyMember[]
+  inviteTokens InviteToken[] // thêm dòng này
+  chiList      Chi[] // ← THÊM DÒNG NÀY
 
   @@map("families")
 }
 
 model Member {
-  id          String    @id @default(uuid())
-  familyId    String
-  fullName    String
-  gender      Gender
-  birthDate   DateTime?
-  deathDate   DateTime?
-  photoUrl    String?
-  generation  Int       @default(1)
-  biography   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String    @id @default(uuid())
+  familyId   String
+  fullName   String
+  gender     Gender
+  birthDate  DateTime?
+  deathDate  DateTime?
+  photoUrl   String?
+  generation Int       @default(1)
+  biography  String?
 
-  family      Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  // ── Từ DB người em ──────────────────
+  alias       String? // tên khác
+  childOrder  Int? // thứ tự con (1, 2, 3...)
+  burialPlace String?
+  isOutPerson Boolean @default(false) // người ngoại tộc (vợ/chồng lấy vào)
+  deathYearAm String? // năm mất âm lịch
+
+  // ── Đơn vị hiển thị trên cây ────────
+  coupleGroupId String? // ← THÊM: nhóm "ô gia đình" để vẽ cây
+
+  // ── Phân cấp tổ chức ────────────────
+  chiId  String?
+  phaiId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  chi    Chi?   @relation(fields: [chiId], references: [id])
+  phai   Phai?  @relation(fields: [phaiId], references: [id])
 
   fromRelations Relationship[] @relation("FromMember")
   toRelations   Relationship[] @relation("ToMember")
@@ -67,29 +85,29 @@ model Member {
 }
 
 model Relationship {
-  id            String           @id @default(uuid())
-  fromMemberId  String
-  toMemberId    String
-  type          RelationshipType
-  marriageDate  DateTime?
-  divorceDate   DateTime?
-  createdAt     DateTime         @default(now())
+  id           String           @id @default(uuid())
+  fromMemberId String
+  toMemberId   String
+  type         RelationshipType
+  marriageDate DateTime?
+  divorceDate  DateTime?
+  createdAt    DateTime         @default(now())
 
-  fromMember    Member @relation("FromMember", fields: [fromMemberId], references: [id])
-  toMember      Member @relation("ToMember",   fields: [toMemberId],   references: [id])
+  fromMember Member @relation("FromMember", fields: [fromMemberId], references: [id])
+  toMember   Member @relation("ToMember", fields: [toMemberId], references: [id])
 
   @@unique([fromMemberId, toMemberId, type])
   @@map("relationships")
 }
 
 model FamilyMember {
-  id        String     @id @default(uuid())
-  familyId  String
-  userId    String     // Supabase auth.users.id
-  role      FamilyRole @default(VIEWER)
-  joinedAt  DateTime   @default(now())
+  id       String     @id @default(uuid())
+  familyId String
+  userId   String // Supabase auth.users.id
+  role     FamilyRole @default(VIEWER)
+  joinedAt DateTime   @default(now())
 
-  family    Family @relation(fields: [familyId], references: [id])
+  family Family @relation(fields: [familyId], references: [id])
 
   @@unique([familyId, userId])
   @@map("family_members")
@@ -98,17 +116,52 @@ model FamilyMember {
 // Thêm vào cuối schema.prisma
 
 model InviteToken {
-  id         String     @id @default(uuid())
-  token      String     @unique @default(uuid())  // UUID làm token
-  familyId   String
-  invitedBy  String                               // userId người mời
-  email      String                               // email người được mời
-  role       FamilyRole @default(VIEWER)
-  usedAt     DateTime?                            // null = chưa dùng
-  expiresAt  DateTime                             // hết hạn sau 7 ngày
-  createdAt  DateTime  @default(now())
+  id        String     @id @default(uuid())
+  token     String     @unique @default(uuid()) // UUID làm token
+  familyId  String
+  invitedBy String // userId người mời
+  email     String // email người được mời
+  role      FamilyRole @default(VIEWER)
+  usedAt    DateTime? // null = chưa dùng
+  expiresAt DateTime // hết hạn sau 7 ngày
+  createdAt DateTime   @default(now())
 
-  family  Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
   @@map("invite_tokens")
+}
+
+model Chi {
+  id          String   @id @default(uuid())
+  familyId    String
+  name        String
+  description String?
+  founderNote String?
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  family   Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  phaiList Phai[]
+  members  Member[]
+
+  @@unique([familyId, name])
+  @@map("chi")
+}
+
+model Phai {
+  id          String   @id @default(uuid())
+  chiId       String
+  name        String
+  description String?
+  founderNote String?
+  orderIndex  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  chi     Chi      @relation(fields: [chiId], references: [id], onDelete: Cascade)
+  members Member[]
+
+  @@unique([chiId, name])
+  @@map("phai")
 }

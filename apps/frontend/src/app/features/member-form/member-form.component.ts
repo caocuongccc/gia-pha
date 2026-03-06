@@ -1,3 +1,4 @@
+// apps/frontend/src/app/features/member-form/member-form.component.ts
 import {
   Component,
   input,
@@ -8,231 +9,454 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import type { Member } from '@gia-pha/shared-types';
 import { MemberService } from '../../core/services/member.service';
+import { ChiPhaiService } from '../../core/services/chi-phai.service';
+import type { Member } from '@gia-pha/shared-types';
+import { Gender } from '@gia-pha/shared-types';
 
 @Component({
   selector: 'app-member-form',
   standalone: true,
   imports: [CommonModule, ReactiveFormsModule],
   template: `
-    <div class="member-form">
-      <h3>{{ editMember() ? 'Sửa thành viên' : 'Thêm thành viên' }}</h3>
+    <form [formGroup]="form" (ngSubmit)="submit()" class="member-form">
+      <!-- ── Thông tin cơ bản ─────────────────────── -->
+      <section class="section">
+        <h4 class="section-title">Thông tin cơ bản</h4>
 
-      <form [formGroup]="form" (ngSubmit)="submit()">
-        <div class="field">
-          <label>Họ và tên *</label>
-          <input formControlName="fullName" placeholder="Lê Văn Tổ" />
-        </div>
-
-        <div class="field">
-          <label>Giới tính</label>
-          <select formControlName="gender">
-            <option value="MALE">Nam</option>
-            <option value="FEMALE">Nữ</option>
-            <option value="OTHER">Khác</option>
-          </select>
-        </div>
-
-        <div class="field-row">
+        <div class="row">
+          <div class="field flex-2">
+            <label>Họ tên <span class="required">*</span></label>
+            <input formControlName="fullName" placeholder="Lê Văn A" />
+          </div>
           <div class="field">
-            <label>Năm sinh</label>
+            <label>Tên tự / Tên khác</label>
+            <input
+              formControlName="alias"
+              placeholder="Tên hiệu, pháp danh..."
+            />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Giới tính <span class="required">*</span></label>
+            <select formControlName="gender">
+              <option value="MALE">Nam</option>
+              <option value="FEMALE">Nữ</option>
+              <option value="OTHER">Khác</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Đời thứ</label>
+            <input
+              formControlName="generation"
+              type="number"
+              min="1"
+              placeholder="1"
+            />
+          </div>
+          <div class="field">
+            <label>Thứ tự con</label>
+            <select formControlName="childOrder">
+              <option [value]="null">—</option>
+              @for (n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; track n) {
+                <option [value]="n">{{ orderLabel(n) }}</option>
+              }
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Năm / ngày sinh</label>
             <input formControlName="birthDate" type="date" />
           </div>
           <div class="field">
-            <label>Năm mất</label>
+            <label>Năm / ngày mất (DL)</label>
             <input formControlName="deathDate" type="date" />
+          </div>
+          <div class="field">
+            <label>Năm mất (Âm lịch)</label>
+            <input formControlName="deathYearAm" placeholder="VD: Canh Tý" />
           </div>
         </div>
 
         <div class="field">
-          <label>Đời thứ</label>
-          <input formControlName="generation" type="number" min="1" />
+          <label>Nơi an táng</label>
+          <input formControlName="burialPlace" placeholder="Thôn X, xã Y..." />
         </div>
 
         <div class="field">
-          <label>Tiểu sử</label>
+          <label>Tiểu sử / Ghi chú</label>
           <textarea
             formControlName="biography"
             rows="3"
-            placeholder="Ghi chú..."
+            placeholder="Sự nghiệp, công trạng, ghi chú gia phả..."
           ></textarea>
         </div>
 
-        <!-- ✅ photoUrl fix: ?? null trong TypeScript, không phải template -->
+        <div class="field checkbox-field">
+          <label>
+            <input formControlName="isOutPerson" type="checkbox" />
+            Người ngoại tộc (vợ/chồng lấy vào, không mang họ)
+          </label>
+        </div>
+      </section>
+
+      <!-- ── Phân cấp Chi - Phái ──────────────────── -->
+      @if (!form.value.isOutPerson) {
+        <section class="section">
+          <h4 class="section-title">Chi — Phái</h4>
+
+          <div class="row">
+            <div class="field">
+              <label>Chi</label>
+              <select formControlName="chiId" (change)="onChiChange()">
+                <option value="">— Chưa xác định —</option>
+                @for (c of chiSvc.chiList(); track c.id) {
+                  <option [value]="c.id">{{ c.name }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="field">
+              <label>Phái</label>
+              <select formControlName="phaiId" [disabled]="!form.value.chiId">
+                <option value="">— Chưa xác định —</option>
+                @for (p of availablePhai(); track p.id) {
+                  <option [value]="p.id">{{ p.name }}</option>
+                }
+              </select>
+            </div>
+          </div>
+        </section>
+      }
+
+      <!-- ── Nhóm gia đình ────────────────────────── -->
+      <section class="section">
+        <h4 class="section-title">Nhóm gia đình</h4>
         <div class="field">
-          <label>Ảnh đại diện URL</label>
-          <input formControlName="photoUrl" placeholder="https://..." />
+          <label>
+            Mã nhóm (coupleGroupId)
+            <span class="hint">— Ghép vợ chồng + con cái vào cùng 1 nhóm</span>
+          </label>
+          <div class="input-row">
+            <input
+              formControlName="coupleGroupId"
+              placeholder="UUID nhóm..."
+              readonly
+              class="readonly"
+            />
+            <button type="button" class="btn-gen" (click)="genGroupId()">
+              Tạo mới
+            </button>
+            <button type="button" class="btn-clear" (click)="clearGroupId()">
+              Xoá
+            </button>
+          </div>
+          <p class="hint-text">
+            Để ghép thành viên này vào nhóm gia đình đã có → paste mã nhóm của
+            người cha/chồng vào đây.
+          </p>
         </div>
+      </section>
 
-        @if (error()) {
-          <div class="error">{{ error() }}</div>
-        }
+      <!-- ── Actions ──────────────────────────────── -->
+      <div class="form-actions">
+        <button type="button" class="btn-cancel" (click)="cancelled.emit()">
+          Huỷ
+        </button>
+        <button
+          type="submit"
+          class="btn-submit"
+          [disabled]="form.invalid || saving()"
+        >
+          {{
+            saving() ? 'Đang lưu...' : editId() ? 'Cập nhật' : 'Thêm thành viên'
+          }}
+        </button>
+      </div>
 
-        <div class="form-actions">
-          <button type="button" class="btn-ghost" (click)="cancelled.emit()">
-            Huỷ
-          </button>
-          <button
-            type="submit"
-            class="btn-primary"
-            [disabled]="form.invalid || saving()"
-          >
-            {{ saving() ? 'Đang lưu...' : editMember() ? 'Cập nhật' : 'Thêm' }}
-          </button>
-        </div>
-      </form>
-    </div>
+      @if (error()) {
+        <p class="error-msg">{{ error() }}</p>
+      }
+    </form>
   `,
   styles: [
     `
       .member-form {
-        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
       }
-      h3 {
-        font-size: 14px;
-        color: #e2e8f0;
-        margin-bottom: 16px;
+      .section {
+        padding: 16px 0;
+        border-bottom: 1px solid #1e293b;
+      }
+      .section:last-of-type {
+        border-bottom: none;
+      }
+      .section-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #64748b;
+        margin: 0 0 12px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
       }
       .field {
         display: flex;
         flex-direction: column;
         gap: 4px;
-        margin-bottom: 12px;
+        flex: 1;
+        min-width: 0;
       }
-      .field-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
+      .field.flex-2 {
+        flex: 2;
       }
       label {
         font-size: 11px;
-        color: #64748b;
-        letter-spacing: 1px;
-        text-transform: uppercase;
+        color: #94a3b8;
+      }
+      .required {
+        color: #ef4444;
+      }
+      .hint {
+        font-size: 10px;
+        color: #475569;
       }
       input,
       select,
       textarea {
-        background: #141828;
-        border: 1px solid #252d45;
+        background: #0a0f1e;
+        border: 1px solid #1e293b;
         color: #e2e8f0;
-        border-radius: 4px;
+        border-radius: 5px;
         padding: 7px 10px;
         font-size: 12px;
-        font-family: inherit;
         outline: none;
+        width: 100%;
       }
       input:focus,
       select:focus,
       textarea:focus {
         border-color: #3b82f6;
       }
+      input.readonly {
+        color: #64748b;
+        cursor: default;
+      }
+      textarea {
+        resize: vertical;
+        font-family: inherit;
+      }
+      .checkbox-field label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+      .checkbox-field input[type='checkbox'] {
+        width: auto;
+      }
+      .input-row {
+        display: flex;
+        gap: 6px;
+      }
+      .input-row input {
+        flex: 1;
+      }
+      .btn-gen,
+      .btn-clear {
+        background: #1e293b;
+        border: 1px solid #334155;
+        color: #94a3b8;
+        border-radius: 5px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .btn-gen:hover {
+        border-color: #3b82f6;
+        color: #60a5fa;
+      }
+      .btn-clear:hover {
+        border-color: #ef4444;
+        color: #ef4444;
+      }
+      .hint-text {
+        font-size: 10px;
+        color: #475569;
+        margin: 4px 0 0;
+      }
       .form-actions {
         display: flex;
         gap: 8px;
         justify-content: flex-end;
-        margin-top: 16px;
+        padding-top: 16px;
       }
-      .btn-ghost {
-        padding: 6px 14px;
-        background: transparent;
-        border: 1px solid #252d45;
-        color: #94a3b8;
-        border-radius: 4px;
+      .btn-cancel {
+        background: none;
+        border: 1px solid #1e293b;
+        color: #64748b;
+        border-radius: 6px;
+        padding: 8px 16px;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 13px;
       }
-      .btn-primary {
-        padding: 6px 14px;
+      .btn-submit {
         background: #3b82f6;
         border: none;
         color: #fff;
-        border-radius: 4px;
+        border-radius: 6px;
+        padding: 8px 20px;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 13px;
       }
-      .btn-primary:disabled {
+      .btn-submit:disabled {
         opacity: 0.5;
         cursor: not-allowed;
       }
-      .error {
+      .error-msg {
         color: #ef4444;
-        font-size: 11px;
-        margin-bottom: 8px;
+        font-size: 12px;
+        text-align: center;
+        margin: 8px 0 0;
       }
     `,
   ],
 })
 export class MemberFormComponent implements OnInit {
-  // ✅ Input tên là 'editMember' — không phải 'member' để tránh conflict
   familyId = input.required<string>();
-  editMember = input<Member | null>(null);
-
-  saved = output<void>();
+  editId = input<string | null>(null);
+  submitted = output<Member>();
   cancelled = output<void>();
 
   private fb = inject(FormBuilder);
   private memberSvc = inject(MemberService);
+  chiSvc = inject(ChiPhaiService);
 
   saving = signal(false);
-  error = signal<string | null>(null);
+  error = signal('');
 
   form = this.fb.group({
     fullName: ['', Validators.required],
-    gender: ['MALE'],
+    alias: [''],
+    gender: [Gender.MALE, Validators.required],
     generation: [1, [Validators.required, Validators.min(1)]],
-    birthDate: [null as string | null],
-    deathDate: [null as string | null],
-    biography: [null as string | null], // ✅ Prisma field name
-    photoUrl: [null as string | null],
+    childOrder: [null as number | null],
+    birthDate: [''],
+    deathDate: [''],
+    deathYearAm: [''],
+    burialPlace: [''],
+    biography: [''],
+    isOutPerson: [false],
+    coupleGroupId: [''],
+    chiId: [''],
+    phaiId: [''],
   });
 
-  ngOnInit() {
-    const m = this.editMember();
-    if (m) {
+  availablePhai = signal<any[]>([]);
+
+  async ngOnInit() {
+    await this.chiSvc.load(this.familyId());
+
+    if (this.editId()) {
+      const m = await this.memberSvc.getById(this.editId()!);
       this.form.patchValue({
         fullName: m.fullName,
+        alias: m.alias ?? '',
         gender: m.gender,
         generation: m.generation,
-        birthDate: m.birthDate,
-        deathDate: m.deathDate,
-        biography: m.biography,
-        // ✅ Dùng ?? null trong TypeScript — giải quyết undefined không assign được string | null
-        photoUrl: m.photoUrl ?? null,
+        childOrder: m.childOrder,
+        birthDate: m.birthDate ? m.birthDate.slice(0, 10) : '',
+        deathDate: m.deathDate ? m.deathDate.slice(0, 10) : '',
+        deathYearAm: m.deathYearAm ?? '',
+        burialPlace: m.burialPlace ?? '',
+        biography: m.biography ?? '',
+        isOutPerson: m.isOutPerson,
+        coupleGroupId: m.coupleGroupId ?? '',
+        chiId: m.chiId ?? '',
+        phaiId: m.phaiId ?? '',
       });
+      this.updateAvailablePhai(m.chiId ?? '');
     }
+  }
+
+  onChiChange() {
+    this.form.patchValue({ phaiId: '' });
+    this.updateAvailablePhai(this.form.value.chiId ?? '');
+  }
+
+  updateAvailablePhai(chiId: string) {
+    const chi = this.chiSvc.chiList().find((c) => c.id === chiId);
+    this.availablePhai.set(chi?.phaiList ?? []);
+  }
+
+  genGroupId() {
+    this.form.patchValue({ coupleGroupId: crypto.randomUUID() });
+  }
+  clearGroupId() {
+    this.form.patchValue({ coupleGroupId: '' });
+  }
+
+  orderLabel(n: number): string {
+    return (
+      [
+        '',
+        'Con trưởng',
+        'Con thứ',
+        'Con ba',
+        'Con tư',
+        'Con năm',
+        'Con sáu',
+        'Con bảy',
+        'Con tám',
+        'Con chín',
+        'Con mười',
+      ][n] ?? `Con thứ ${n}`
+    );
   }
 
   async submit() {
     if (this.form.invalid) return;
     this.saving.set(true);
-    this.error.set(null);
+    this.error.set('');
 
     try {
       const v = this.form.value;
-      // ✅ Convert null→undefined vì CreateMemberDto dùng optional (string|undefined)
       const dto = {
         familyId: this.familyId(),
         fullName: v.fullName!,
-        gender: v.gender as any,
-        generation: v.generation!,
-        birthDate: v.birthDate ?? undefined,
-        deathDate: v.deathDate ?? undefined,
-        biography: v.biography ?? undefined,
-        photoUrl: v.photoUrl ?? undefined,
+        gender: v.gender! as any,
+        generation: Number(v.generation),
+        birthDate: v.birthDate || null,
+        deathDate: v.deathDate || null,
+        deathYearAm: v.deathYearAm || null,
+        alias: v.alias || null,
+        childOrder: v.childOrder ? Number(v.childOrder) : null,
+        burialPlace: v.burialPlace || null,
+        biography: v.biography || null,
+        isOutPerson: v.isOutPerson ?? false,
+        coupleGroupId: v.coupleGroupId || null,
+        chiId: v.chiId || null,
+        phaiId: v.phaiId || null,
       };
 
-      const m = this.editMember();
-      if (m) {
-        await this.memberSvc.update(m.id, dto);
-      } else {
-        await this.memberSvc.create(dto);
-      }
+      const result = this.editId()
+        ? await this.memberSvc.update(this.editId()!, dto)
+        : await this.memberSvc.create(dto);
 
-      this.saved.emit();
-    } catch (err: any) {
-      this.error.set(err.error?.error ?? 'Lưu thất bại');
+      this.submitted.emit(result);
+    } catch (e: any) {
+      this.error.set(e?.error?.error ?? 'Có lỗi xảy ra');
     } finally {
       this.saving.set(false);
     }

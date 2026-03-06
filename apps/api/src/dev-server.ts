@@ -63,35 +63,58 @@ app.use((req, _res, next) => {
 // ── Import handlers (SAU khi dotenv đã load) ────────────────
 // Dùng dynamic import để đảm bảo thứ tự
 async function startServer() {
-  const { default: families } = await import('../api/families/index.js');
+  ``;
   const { default: familiesId } = await import('../api/families/[id].js');
+  const { default: membersId } = await import('../api/members/[id].js');
+  const { default: chiId } = await import('../api/chi/[id].js');
+  const { default: phaiId } = await import('../api/phai/[id].js');
+  const { default: relationsId } = await import('../api/relations/[id].js');
+  const { default: families } = await import('../api/families/index.js');
   const { default: members } = await import('../api/members/index.js');
-  //   const { default: membersId } = await import('../api/members/[id].js');
   const { default: relations } = await import('../api/relations/index.js');
   const { default: invites } = await import('../api/invites/index.js');
   const { default: inviteAccept } = await import('../api/invites/accept.js');
-  //   const { default: chiIndex } = await import('../api/chi/index.js');
-  //   const { default: chiId } = await import('../api/chi/[id].js');
-  //   const { default: phaiIndex } = await import('../api/phai/index.js');
-  //   const { default: phaiId } = await import('../api/phai/[id].js');
+  const { default: chiIndex } = await import('../api/chi/index.js');
+  const { default: phaiIndex } = await import('../api/phai/index.js');
+  const { default: relationsIndex } = await import('../api/relations/index.js');
 
   // Routes — thứ tự quan trọng: specific trước, generic sau
   app.all('/api/families/:id', (req, res) =>
     familiesId(req as any, res as any),
   );
   app.all('/api/families', (req, res) => families(req as any, res as any));
-  //   app.all('/api/members/:id', (req, res) => membersId(req as any, res as any));
   app.all('/api/members', (req, res) => members(req as any, res as any));
   app.all('/api/relations', (req, res) => relations(req as any, res as any));
   app.all('/api/invites/accept', (req, res) =>
     inviteAccept(req as any, res as any),
   );
   app.all('/api/invites', (req, res) => invites(req as any, res as any));
-  //   app.all('/api/chi/:id', (req, res) => chiId(req as any, res as any));
-  //   app.all('/api/chi', (req, res) => chiIndex(req as any, res as any));
-  //   app.all('/api/phai/:id', (req, res) => phaiId(req as any, res as any));
-  //   app.all('/api/phai', (req, res) => phaiIndex(req as any, res as any));
+  app.all('/api/chi', (req, res) => chiIndex(req as any, res as any));
+  app.all('/api/phai', (req, res) => phaiIndex(req as any, res as any));
 
+  app.all('/api/relations', (req, res) =>
+    relationsIndex(req as any, res as any),
+  );
+  // dev-server.ts — thay tất cả route [id] thành:
+  app.all('/api/members/:id', (req: any, res) => {
+    req.query = { ...req.query, id: req.params.id }; // inject id vào query
+    membersId(req as any, res as any);
+  });
+
+  app.all('/api/families/:id', (req: any, res) => {
+    req.query = { ...req.query, id: req.params.id };
+    familiesId(req as any, res as any);
+  });
+
+  app.all('/api/chi/:id', (req: any, res) => {
+    req.query = { ...req.query, id: req.params.id };
+    chiId(req as any, res as any);
+  });
+
+  app.all('/api/phai/:id', (req: any, res) => {
+    req.query = { ...req.query, id: req.params.id };
+    phaiId(req as any, res as any);
+  });
   // Health check
   app.get('/api/health', (_req, res) =>
     res.json({ ok: true, time: new Date() }),

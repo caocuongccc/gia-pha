@@ -9,7 +9,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const user = await requireAuth(req, res);
   if (!user) return;
-  const { id } = req.query as { id: string };
+  //   const { id } = req.query as { id: string };
+  // const id = (req.params?.id ?? req.query?.id) as string;
+  const id = req.url?.split('/').pop()?.split('?')[0] as string;
 
   if (req.method === 'GET') {
     const family = await prisma.family.findFirst({

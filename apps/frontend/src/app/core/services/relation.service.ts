@@ -1,19 +1,18 @@
+// apps/frontend/src/app/core/services/relation.service.ts
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../environments/environment';
-
-// ✅ Import thẳng từ shared-types để đồng bộ với TreeViewComponent
 import type { Relationship } from '@gia-pha/shared-types';
 
-// ✅ Re-export để các file khác import từ 1 chỗ
 export type { Relationship };
 
+// ✅ Khớp với Prisma enum RelationshipType
 export type RelationType = 'PARENT' | 'SPOUSE' | 'SIBLING';
 
 export interface CreateRelationDto {
   familyId: string;
-  fromMemberId: string; // ✅ dùng đúng tên field của Relationship
+  fromMemberId: string;
   toMemberId: string;
   type: RelationType;
 }
@@ -23,7 +22,6 @@ export class RelationService {
   private http = inject(HttpClient);
   private baseUrl = `${environment.apiUrl}/api/relations`;
 
-  // ✅ Signal dùng type Relationship (có fromMemberId, toMemberId)
   relations = signal<Relationship[]>([]);
   loading = signal(false);
   error = signal<string | null>(null);
@@ -49,7 +47,7 @@ export class RelationService {
     const res = await firstValueFrom(
       this.http.post<{ data: Relationship }>(this.baseUrl, dto),
     );
-    const relation = res.data!;
+    const relation = res.data;
     this.relations.update((list) => [...list, relation]);
     return relation;
   }
@@ -59,19 +57,29 @@ export class RelationService {
     this.relations.update((list) => list.filter((r) => r.id !== id));
   }
 
+  // ── Helpers ───────────────────────────────────────────────
   getRelationsOf(memberId: string) {
     return this.relations().filter(
       (r) => r.fromMemberId === memberId || r.toMemberId === memberId,
     );
   }
 
-  getChildren(memberId: string) {
+  // Con của memberId (memberId là cha/mẹ)
+  getChildren(memberId: string): string[] {
     return this.relations()
       .filter((r) => r.type === 'PARENT' && r.fromMemberId === memberId)
       .map((r) => r.toMemberId);
   }
 
-  getSpouses(memberId: string) {
+  // Cha/mẹ của memberId
+  getParents(memberId: string): string[] {
+    return this.relations()
+      .filter((r) => r.type === 'PARENT' && r.toMemberId === memberId)
+      .map((r) => r.fromMemberId);
+  }
+
+  // Vợ/chồng của memberId
+  getSpouses(memberId: string): string[] {
     return this.relations()
       .filter(
         (r) =>
@@ -85,5 +93,6 @@ export class RelationService {
 
   clear() {
     this.relations.set([]);
+    this.error.set(null);
   }
 }
