@@ -17,6 +17,13 @@ interface TreeNode {
   children?: TreeNode[];
 }
 
+interface GroupNode {
+  id: string;
+  patriarch: Member;
+  leafChildren: Member[]; // con chưa có con → nằm trong group này
+  children?: GroupNode[]; // con đã có con → thành group riêng bên dưới
+}
+
 @Component({
   selector: 'app-tree-view',
   standalone: true,
@@ -36,6 +43,25 @@ interface TreeNode {
         @if (searchQuery()) {
           <button class="search-clear" (mousedown)="clearSearch()">✕</button>
         }
+        <div class="mode-divider"></div>
+        <div class="mode-toggle">
+          <button
+            class="mode-btn"
+            [class.active]="treeMode() === 'tree'"
+            (mousedown)="setMode('tree')"
+            title="Cây thường"
+          >
+            🌳
+          </button>
+          <button
+            class="mode-btn"
+            [class.active]="treeMode() === 'group'"
+            (mousedown)="setMode('group')"
+            title="Theo nhóm"
+          >
+            ⬜
+          </button>
+        </div>
       </div>
       @if (searchOpen()) {
         @if (searchResults().length > 0) {
@@ -162,6 +188,38 @@ interface TreeNode {
       }
       .search-clear:hover {
         color: #e2e8f0;
+      }
+      .mode-divider {
+        width: 1px;
+        height: 16px;
+        background: #1e3a6e;
+        flex-shrink: 0;
+        margin: 0 2px;
+      }
+      .mode-toggle {
+        display: flex;
+        gap: 1px;
+        flex-shrink: 0;
+      }
+      .mode-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+        padding: 2px 4px;
+        border-radius: 6px;
+        opacity: 0.45;
+        transition:
+          opacity 0.15s,
+          background 0.15s;
+        line-height: 1;
+      }
+      .mode-btn:hover {
+        opacity: 0.8;
+      }
+      .mode-btn.active {
+        opacity: 1;
+        background: #1e3a6e22;
       }
       .search-dropdown {
         background: #0c1828;
@@ -341,6 +399,7 @@ export class TreeViewComponent {
   searchQuery = signal('');
   searchResults = signal<Member[]>([]);
   searchOpen = signal(false);
+  treeMode = signal<'tree' | 'group'>('tree');
 
   // ── Subtree preview state ────────────────────────────────────
   previewVisible = signal(false);
@@ -371,9 +430,12 @@ export class TreeViewComponent {
     effect(() => {
       const m = this.members();
       const r = this.relations();
+      const mode = this.treeMode();
       if (m.length) {
         setTimeout(() => {
-          if (this.svgRef) this.renderTree(m, r);
+          if (!this.svgRef) return;
+          if (mode === 'group') this.renderGroupTree(m, r);
+          else this.renderTree(m, r);
         }, 0);
       }
     });
@@ -416,6 +478,254 @@ export class TreeViewComponent {
       cur = cur.parent;
     }
     return ids;
+  }
+
+  // ── Build group hierarchy ────────────────────────────────────
+  // Logic: mỗi node = 1 gia đình (patriarch + con chưa có con riêng)
+  // Con đã có con → tách thành group riêng bên dưới
+  private buildGroupHierarchy(
+    members: Member[],
+    relations: Relationship[],
+  ): GroupNode {
+    const parentRels = relations.filter((r) => (r as any).type === 'PARENT');
+    // childrenMap: cha → [con]
+    const childrenMap = new Map<string, string[]>();
+    parentRels.forEach((r) => {
+      if (!childrenMap.has(r.fromMemberId)) childrenMap.set(r.fromMemberId, []);
+      childrenMap.get(r.fromMemberId)!.push(r.toMemberId);
+    });
+    const memberMap = new Map(members.map((m) => [m.id, m]));
+    // Tìm root (không có cha)
+    const childIds = new Set(parentRels.map((r) => r.toMemberId));
+    const roots = members.filter((m) => !childIds.has(m.id));
+    const rootMember =
+      roots.sort((a, b) => a.generation - b.generation)[0] ?? members[0];
+
+    const visited = new Set<string>();
+    const buildGroup = (patriarchId: string): GroupNode => {
+      visited.add(patriarchId);
+      const patriarch = memberMap.get(patriarchId)!;
+      const directKids = (childrenMap.get(patriarchId) ?? []).filter(
+        (c) => !visited.has(c),
+      );
+      // Con có con riêng → tách group; con lá → nằm trong group này
+      const leafChildren: Member[] = [];
+      const subGroups: GroupNode[] = [];
+      for (const kidId of directKids) {
+        visited.add(kidId);
+        const hasOwnKids = (childrenMap.get(kidId) ?? []).length > 0;
+        if (hasOwnKids) {
+          subGroups.push(buildGroup(kidId));
+        } else {
+          leafChildren.push(memberMap.get(kidId)!);
+        }
+      }
+      return { id: patriarchId, patriarch, leafChildren, children: subGroups };
+    };
+    return buildGroup(rootMember.id);
+  }
+
+  // ── Render group tree ────────────────────────────────────────
+  private renderGroupTree(members: Member[], relations: Relationship[]) {
+    const svgEl = this.svgRef.nativeElement;
+    const svg = d3.select<SVGSVGElement, unknown>(svgEl);
+    svg.selectAll('*').remove();
+
+    const W = svgEl.clientWidth || 900;
+    const H = svgEl.clientHeight || 600;
+
+    const g = svg.append('g').attr('class', 'tree-root');
+    const zoom = d3
+      .zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.05, 3])
+      .on('zoom', (e) => g.attr('transform', e.transform));
+    svg.call(zoom);
+    this.zoomRef = zoom;
+
+    // Kích thước card group
+    const CARD_W = 200;
+    const LEAF_H = 20; // chiều cao mỗi dòng con lá
+    const HEAD_H = 42; // chiều cao phần patriarch
+    const PAD = 8;
+
+    // Tính chiều cao card theo số con lá
+    const cardH = (node: GroupNode) =>
+      HEAD_H + PAD + Math.max(0, node.leafChildren.length) * LEAF_H + PAD;
+
+    const groupRoot = this.buildGroupHierarchy(members, relations);
+
+    // Dùng d3.hierarchy với nodeSize động — dùng max cardH estimate
+    const hier = d3.hierarchy<GroupNode>(groupRoot, (d) => d.children ?? []);
+    const maxH = HEAD_H + PAD + 8 * LEAF_H + PAD; // estimate max
+    d3.tree<GroupNode>().nodeSize([CARD_W + 40, maxH + 60])(hier as any);
+
+    // ── Links ─────────────────────────────────────────────────
+    g.append('g')
+      .attr('class', 'links')
+      .selectAll('path')
+      .data(hier.links())
+      .join('path')
+      .attr('d', (d: any) => {
+        const sh = cardH(d.source.data);
+        const sx = d.source.x,
+          sy = d.source.y + sh;
+        const tx = d.target.x,
+          ty = d.target.y;
+        const my = (sy + ty) / 2;
+        return `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;
+      })
+      .attr('fill', 'none')
+      .attr('stroke', '#2a3a4a')
+      .attr('stroke-width', 1.5);
+
+    // ── Group cards ───────────────────────────────────────────
+    const cards = g
+      .append('g')
+      .attr('class', 'nodes')
+      .selectAll<SVGGElement, d3.HierarchyPointNode<GroupNode>>('g')
+      .data(hier.descendants() as d3.HierarchyPointNode<GroupNode>[])
+      .join('g')
+      .attr('transform', (d: any) => `translate(${d.x - CARD_W / 2},${d.y})`)
+      .style('cursor', 'pointer');
+
+    // Card nền
+    cards
+      .append('rect')
+      .attr('width', CARD_W)
+      .attr('height', (d) => cardH(d.data))
+      .attr('rx', 10)
+      .attr('fill', '#0c1828')
+      .attr('stroke', '#1e3a6e')
+      .attr('stroke-width', 1.5);
+
+    // ── Patriarch row ─────────────────────────────────────────
+    // Avatar circle
+    cards
+      .append('circle')
+      .attr('cx', 22)
+      .attr('cy', HEAD_H / 2)
+      .attr('r', 14)
+      .attr('fill', (d) =>
+        d.data.patriarch.gender === 'MALE' ? '#0e2a4a' : '#2a0e3a',
+      )
+      .attr('stroke', (d) =>
+        d.data.patriarch.gender === 'MALE' ? '#3b82f6' : '#a855f7',
+      )
+      .attr('stroke-width', 1.5);
+
+    cards
+      .append('text')
+      .attr('x', 22)
+      .attr('cy', HEAD_H / 2 + 1)
+      .attr('y', HEAD_H / 2 + 4)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '11px')
+      .attr('fill', '#94a3b8')
+      .text((d) => (d.data.patriarch.gender === 'MALE' ? '♂' : '♀'));
+
+    // Tên patriarch
+    cards
+      .append('text')
+      .attr('x', 44)
+      .attr('y', HEAD_H / 2 - 5)
+      .attr('font-size', '11px')
+      .attr('font-weight', '600')
+      .attr('fill', '#e2e8f0')
+      .text((d) => {
+        const n = d.data.patriarch.fullName;
+        return n.length > 18 ? n.slice(0, 16) + '…' : n;
+      });
+
+    // Đời badge
+    cards
+      .append('text')
+      .attr('x', 44)
+      .attr('y', HEAD_H / 2 + 9)
+      .attr('font-size', '9px')
+      .attr('fill', '#d2992280')
+      .text((d) => `Đời ${d.data.patriarch.generation}`);
+
+    // Số con badge (góc phải)
+    cards
+      .append('text')
+      .attr('x', CARD_W - 8)
+      .attr('y', 14)
+      .attr('text-anchor', 'end')
+      .attr('font-size', '9px')
+      .attr('fill', '#475569')
+      .text((d) => {
+        const total =
+          d.data.leafChildren.length + (d.data.children?.length ?? 0);
+        return total > 0 ? `${total} con` : '';
+      });
+
+    // Divider
+    cards
+      .filter((d) => d.data.leafChildren.length > 0)
+      .append('line')
+      .attr('x1', 8)
+      .attr('x2', CARD_W - 8)
+      .attr('y1', HEAD_H + PAD / 2)
+      .attr('y2', HEAD_H + PAD / 2)
+      .attr('stroke', '#1e293b')
+      .attr('stroke-width', 1);
+
+    // ── Leaf children rows ────────────────────────────────────
+    cards.each(function (d) {
+      const cardG = d3.select(this);
+      d.data.leafChildren.forEach((child, i) => {
+        const y = HEAD_H + PAD + i * LEAF_H + LEAF_H / 2 + 3;
+        // Dot
+        cardG
+          .append('circle')
+          .attr('cx', 16)
+          .attr('cy', y - 3)
+          .attr('r', 3)
+          .attr('fill', child.gender === 'MALE' ? '#3b82f688' : '#a855f788');
+        // Tên
+        cardG
+          .append('text')
+          .attr('x', 26)
+          .attr('y', y)
+          .attr('font-size', '10px')
+          .attr('fill', '#94a3b8')
+          .text(() => {
+            const n = child.fullName;
+            return n.length > 22 ? n.slice(0, 20) + '…' : n;
+          });
+        // Đời
+        cardG
+          .append('text')
+          .attr('x', CARD_W - 8)
+          .attr('y', y)
+          .attr('text-anchor', 'end')
+          .attr('font-size', '9px')
+          .attr('fill', '#334155')
+          .text(`Đ${child.generation}`);
+      });
+    });
+
+    // Click lên card → emit patriarch
+    cards.on('click', (ev, d) => {
+      ev.stopPropagation();
+      this.memberClicked.emit(d.data.patriarch);
+    });
+
+    svg.on('click', () => {});
+
+    // ── Fit view ─────────────────────────────────────────────
+    const bounds = (g.node() as SVGGElement).getBBox();
+    if (bounds.width && bounds.height) {
+      const pad = 60;
+      const scale = Math.min(
+        (W - pad * 2) / bounds.width,
+        (H - pad * 2) / bounds.height,
+        0.9,
+      );
+      const tx = W / 2 - (bounds.x + bounds.width / 2) * scale;
+      const ty = pad - bounds.y * scale;
+      svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+    }
   }
 
   // ── Render tree ──────────────────────────────────────────────
@@ -710,6 +1020,11 @@ export class TreeViewComponent {
   }
 
   // ── Search ───────────────────────────────────────────────────
+  setMode(mode: 'tree' | 'group') {
+    this.treeMode.set(mode);
+    this.clearHighlight();
+  }
+
   onSearch(q: string) {
     this.searchQuery.set(q);
     if (q.trim().length < 1) {
