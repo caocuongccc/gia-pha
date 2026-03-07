@@ -7,6 +7,7 @@ import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { TreeViewComponent } from '../../tree-view/tree-view.component';
 import type { Member, Relationship, Family } from '@gia-pha/shared-types';
+import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-public-tree',
@@ -141,15 +142,12 @@ export class PublicTreePage implements OnInit {
       this.loading.set(false);
       return;
     }
+    const base = `${environment.apiUrl}/api/public/families/${familyId}`;
     try {
       const [fam, mem, rel] = await Promise.all([
-        this.http.get<any>(`/api/public/families/${familyId}`).toPromise(),
-        this.http
-          .get<any>(`/api/public/families/${familyId}/members`)
-          .toPromise(),
-        this.http
-          .get<any>(`/api/public/families/${familyId}/relations`)
-          .toPromise(),
+        this.http.get<any>(base).toPromise(),
+        this.http.get<any>(`${base}/members`).toPromise(),
+        this.http.get<any>(`${base}/relations`).toPromise(),
       ]);
       this.family.set(fam?.data ?? null);
       this.members.set(mem?.data ?? []);

@@ -20,15 +20,14 @@ interface TreeNode {
 interface GroupNode {
   id: string;
   patriarch: Member;
-  leafChildren: Member[]; // con chưa có con → nằm trong group này
-  children?: GroupNode[]; // con đã có con → thành group riêng bên dưới
+  leafChildren: Member[];
+  children?: GroupNode[];
 }
 
 @Component({
   selector: 'app-tree-view',
   standalone: true,
   template: `
-    <!-- ── Search ─────────────────────────────────────────────── -->
     <div class="search-wrap">
       <div class="search-row">
         <span class="search-icon">🔍</span>
@@ -86,10 +85,8 @@ interface GroupNode {
       }
     </div>
 
-    <!-- ── Main tree SVG ──────────────────────────────────────── -->
     <svg #svgRef id="family-tree-svg" class="tree-svg"></svg>
 
-    <!-- ── Subtree preview overlay ────────────────────────────── -->
     @if (previewVisible()) {
       <div class="sp-overlay" (click)="previewVisible.set(false)">
         <div class="sp-panel" (click)="$event.stopPropagation()">
@@ -111,7 +108,6 @@ interface GroupNode {
       </div>
     }
 
-    <!-- ── Tooltip ────────────────────────────────────────────── -->
     <div
       #tooltip
       class="node-tooltip"
@@ -138,8 +134,6 @@ interface GroupNode {
         width: 100%;
         min-height: 0;
       }
-
-      /* ── Search ─────────────────────────────────────────────── */
       .search-wrap {
         position: absolute;
         top: 12px;
@@ -278,8 +272,6 @@ interface GroupNode {
         border-radius: 10px;
         margin-top: 4px;
       }
-
-      /* ── Subtree preview ─────────────────────────────────────── */
       .sp-overlay {
         position: absolute;
         inset: 0;
@@ -346,8 +338,6 @@ interface GroupNode {
         flex: 1;
         width: 100%;
       }
-
-      /* ── Tooltip ─────────────────────────────────────────────── */
       .node-tooltip {
         position: absolute;
         background: #0f1728;
@@ -387,30 +377,23 @@ export class TreeViewComponent {
   viewOnly = input(false);
   memberClicked = output<Member>();
 
-  // ── Expand state ─────────────────────────────────────────────
   private userExpandedIds = new Set<string>();
   private userCollapsedIds = new Set<string>();
-
-  // ── Internal state ───────────────────────────────────────────
   private selectedId = signal<string | null>(null);
   private highlightIds = signal<Set<string>>(new Set());
 
-  // ── Search state ─────────────────────────────────────────────
   searchQuery = signal('');
   searchResults = signal<Member[]>([]);
   searchOpen = signal(false);
   treeMode = signal<'tree' | 'group'>('tree');
 
-  // ── Subtree preview state ────────────────────────────────────
   previewVisible = signal(false);
   previewMember = signal<Member | null>(null);
   previewDescCount = signal(0);
 
-  // ── Tooltip state ────────────────────────────────────────────
   tooltipVisible = signal(false);
   tooltipData = signal({ name: '', meta: '', chi: '' });
 
-  // D3 refs
   private nodeSelection!: d3.Selection<
     SVGGElement,
     d3.HierarchyPointNode<TreeNode>,
@@ -441,7 +424,6 @@ export class TreeViewComponent {
     });
   }
 
-  // ── Build cây từ relationships ───────────────────────────────
   private buildHierarchy(
     members: Member[],
     relations: Relationship[],
@@ -469,7 +451,6 @@ export class TreeViewComponent {
     return buildNode(rootMember.id);
   }
 
-  // ── Tìm ancestors từ node về root ───────────────────────────
   private getAncestorIds(node: d3.HierarchyPointNode<TreeNode>): Set<string> {
     const ids = new Set<string>();
     let cur: d3.HierarchyNode<TreeNode> | null = node;
@@ -480,27 +461,21 @@ export class TreeViewComponent {
     return ids;
   }
 
-  // ── Build group hierarchy ────────────────────────────────────
-  // Logic: mỗi node = 1 gia đình (patriarch + con chưa có con riêng)
-  // Con đã có con → tách thành group riêng bên dưới
   private buildGroupHierarchy(
     members: Member[],
     relations: Relationship[],
   ): GroupNode {
     const parentRels = relations.filter((r) => (r as any).type === 'PARENT');
-    // childrenMap: cha → [con]
     const childrenMap = new Map<string, string[]>();
     parentRels.forEach((r) => {
       if (!childrenMap.has(r.fromMemberId)) childrenMap.set(r.fromMemberId, []);
       childrenMap.get(r.fromMemberId)!.push(r.toMemberId);
     });
     const memberMap = new Map(members.map((m) => [m.id, m]));
-    // Tìm root (không có cha)
     const childIds = new Set(parentRels.map((r) => r.toMemberId));
     const roots = members.filter((m) => !childIds.has(m.id));
     const rootMember =
       roots.sort((a, b) => a.generation - b.generation)[0] ?? members[0];
-
     const visited = new Set<string>();
     const buildGroup = (patriarchId: string): GroupNode => {
       visited.add(patriarchId);
@@ -508,7 +483,6 @@ export class TreeViewComponent {
       const directKids = (childrenMap.get(patriarchId) ?? []).filter(
         (c) => !visited.has(c),
       );
-      // Con có con riêng → tách group; con lá → nằm trong group này
       const leafChildren: Member[] = [];
       const subGroups: GroupNode[] = [];
       for (const kidId of directKids) {
@@ -525,15 +499,12 @@ export class TreeViewComponent {
     return buildGroup(rootMember.id);
   }
 
-  // ── Render group tree ────────────────────────────────────────
   private renderGroupTree(members: Member[], relations: Relationship[]) {
     const svgEl = this.svgRef.nativeElement;
     const svg = d3.select<SVGSVGElement, unknown>(svgEl);
     svg.selectAll('*').remove();
-
     const W = svgEl.clientWidth || 900;
     const H = svgEl.clientHeight || 600;
-
     const g = svg.append('g').attr('class', 'tree-root');
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
@@ -541,25 +512,16 @@ export class TreeViewComponent {
       .on('zoom', (e) => g.attr('transform', e.transform));
     svg.call(zoom);
     this.zoomRef = zoom;
-
-    // Kích thước card group
     const CARD_W = 200;
-    const LEAF_H = 20; // chiều cao mỗi dòng con lá
-    const HEAD_H = 42; // chiều cao phần patriarch
+    const LEAF_H = 20;
+    const HEAD_H = 42;
     const PAD = 8;
-
-    // Tính chiều cao card theo số con lá
     const cardH = (node: GroupNode) =>
       HEAD_H + PAD + Math.max(0, node.leafChildren.length) * LEAF_H + PAD;
-
     const groupRoot = this.buildGroupHierarchy(members, relations);
-
-    // Dùng d3.hierarchy với nodeSize động — dùng max cardH estimate
     const hier = d3.hierarchy<GroupNode>(groupRoot, (d) => d.children ?? []);
-    const maxH = HEAD_H + PAD + 8 * LEAF_H + PAD; // estimate max
+    const maxH = HEAD_H + PAD + 8 * LEAF_H + PAD;
     d3.tree<GroupNode>().nodeSize([CARD_W + 40, maxH + 60])(hier as any);
-
-    // ── Links ─────────────────────────────────────────────────
     g.append('g')
       .attr('class', 'links')
       .selectAll('path')
@@ -568,8 +530,8 @@ export class TreeViewComponent {
       .attr('d', (d: any) => {
         const sh = cardH(d.source.data);
         const sx = d.source.x,
-          sy = d.source.y + sh;
-        const tx = d.target.x,
+          sy = d.source.y + sh,
+          tx = d.target.x,
           ty = d.target.y;
         const my = (sy + ty) / 2;
         return `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;
@@ -577,8 +539,6 @@ export class TreeViewComponent {
       .attr('fill', 'none')
       .attr('stroke', '#2a3a4a')
       .attr('stroke-width', 1.5);
-
-    // ── Group cards ───────────────────────────────────────────
     const cards = g
       .append('g')
       .attr('class', 'nodes')
@@ -587,8 +547,6 @@ export class TreeViewComponent {
       .join('g')
       .attr('transform', (d: any) => `translate(${d.x - CARD_W / 2},${d.y})`)
       .style('cursor', 'pointer');
-
-    // Card nền
     cards
       .append('rect')
       .attr('width', CARD_W)
@@ -597,9 +555,6 @@ export class TreeViewComponent {
       .attr('fill', '#0c1828')
       .attr('stroke', '#1e3a6e')
       .attr('stroke-width', 1.5);
-
-    // ── Patriarch row ─────────────────────────────────────────
-    // Avatar circle
     cards
       .append('circle')
       .attr('cx', 22)
@@ -612,7 +567,6 @@ export class TreeViewComponent {
         d.data.patriarch.gender === 'MALE' ? '#3b82f6' : '#a855f7',
       )
       .attr('stroke-width', 1.5);
-
     cards
       .append('text')
       .attr('x', 22)
@@ -622,8 +576,6 @@ export class TreeViewComponent {
       .attr('font-size', '11px')
       .attr('fill', '#94a3b8')
       .text((d) => (d.data.patriarch.gender === 'MALE' ? '♂' : '♀'));
-
-    // Tên patriarch
     cards
       .append('text')
       .attr('x', 44)
@@ -635,8 +587,6 @@ export class TreeViewComponent {
         const n = d.data.patriarch.fullName;
         return n.length > 18 ? n.slice(0, 16) + '…' : n;
       });
-
-    // Đời badge
     cards
       .append('text')
       .attr('x', 44)
@@ -644,8 +594,6 @@ export class TreeViewComponent {
       .attr('font-size', '9px')
       .attr('fill', '#d2992280')
       .text((d) => `Đời ${d.data.patriarch.generation}`);
-
-    // Số con badge (góc phải)
     cards
       .append('text')
       .attr('x', CARD_W - 8)
@@ -658,8 +606,6 @@ export class TreeViewComponent {
           d.data.leafChildren.length + (d.data.children?.length ?? 0);
         return total > 0 ? `${total} con` : '';
       });
-
-    // Divider
     cards
       .filter((d) => d.data.leafChildren.length > 0)
       .append('line')
@@ -669,20 +615,16 @@ export class TreeViewComponent {
       .attr('y2', HEAD_H + PAD / 2)
       .attr('stroke', '#1e293b')
       .attr('stroke-width', 1);
-
-    // ── Leaf children rows ────────────────────────────────────
     cards.each(function (d) {
       const cardG = d3.select(this);
       d.data.leafChildren.forEach((child, i) => {
         const y = HEAD_H + PAD + i * LEAF_H + LEAF_H / 2 + 3;
-        // Dot
         cardG
           .append('circle')
           .attr('cx', 16)
           .attr('cy', y - 3)
           .attr('r', 3)
           .attr('fill', child.gender === 'MALE' ? '#3b82f688' : '#a855f788');
-        // Tên
         cardG
           .append('text')
           .attr('x', 26)
@@ -693,7 +635,6 @@ export class TreeViewComponent {
             const n = child.fullName;
             return n.length > 22 ? n.slice(0, 20) + '…' : n;
           });
-        // Đời
         cardG
           .append('text')
           .attr('x', CARD_W - 8)
@@ -704,16 +645,11 @@ export class TreeViewComponent {
           .text(`Đ${child.generation}`);
       });
     });
-
-    // Click lên card → emit patriarch
     cards.on('click', (ev, d) => {
       ev.stopPropagation();
       this.memberClicked.emit(d.data.patriarch);
     });
-
     svg.on('click', () => {});
-
-    // ── Fit view ─────────────────────────────────────────────
     const bounds = (g.node() as SVGGElement).getBBox();
     if (bounds.width && bounds.height) {
       const pad = 60;
@@ -728,29 +664,22 @@ export class TreeViewComponent {
     }
   }
 
-  // ── Render tree ──────────────────────────────────────────────
   private renderTree(members: Member[], relations: Relationship[]) {
     const svgEl = this.svgRef.nativeElement;
     const svg = d3.select<SVGSVGElement, unknown>(svgEl);
     svg.selectAll('*').remove();
-
     const W = svgEl.clientWidth || 900;
     const H = svgEl.clientHeight || 600;
     const NODE_W = 148;
     const NODE_H = 72;
-
     const g = svg.append('g').attr('class', 'tree-root');
-
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.05, 3])
       .on('zoom', (e) => g.attr('transform', e.transform));
     svg.call(zoom);
     this.zoomRef = zoom;
-
-    // ── Hierarchy + collapse logic ────────────────────────────
     const root = d3.hierarchy(this.buildHierarchy(members, relations));
-
     const INITIAL_DEPTH = 8;
     root.each((d: any) => {
       if (!d.children) return;
@@ -762,12 +691,9 @@ export class TreeViewComponent {
         d.children = undefined;
       }
     });
-
     const treeLayout = d3.tree<TreeNode>().nodeSize([NODE_W + 24, NODE_H + 70]);
     treeLayout(root as any);
     this.rootHierarchy = root as d3.HierarchyPointNode<TreeNode>;
-
-    // ── Links ─────────────────────────────────────────────────
     this.linkSelection = g
       .append('g')
       .attr('class', 'links')
@@ -776,8 +702,8 @@ export class TreeViewComponent {
       .join('path')
       .attr('d', (d: any) => {
         const sx = d.source.x,
-          sy = d.source.y + NODE_H;
-        const tx = d.target.x,
+          sy = d.source.y + NODE_H,
+          tx = d.target.x,
           ty = d.target.y;
         const my = (sy + ty) / 2;
         return `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;
@@ -785,8 +711,6 @@ export class TreeViewComponent {
       .attr('fill', 'none')
       .attr('stroke', '#2a3a4a')
       .attr('stroke-width', 1.5);
-
-    // ── Nodes ─────────────────────────────────────────────────
     this.nodeSelection = g
       .append('g')
       .attr('class', 'nodes')
@@ -809,8 +733,6 @@ export class TreeViewComponent {
       })
       .on('mouseover', (ev, d) => this.showTooltip(ev, d))
       .on('mouseout', () => this.tooltipVisible.set(false));
-
-    // Card background
     this.nodeSelection
       .append('rect')
       .attr('class', 'node-bg')
@@ -822,8 +744,6 @@ export class TreeViewComponent {
       )
       .attr('stroke', (d) => (d.data.data.deathDate ? '#334155' : '#2a3a50'))
       .attr('stroke-width', 1.5);
-
-    // Avatar clip + image
     this.nodeSelection
       .append('clipPath')
       .attr('id', (d) => `clip-${d.data.id}`)
@@ -844,8 +764,6 @@ export class TreeViewComponent {
       .attr('width', 44)
       .attr('height', 44)
       .attr('clip-path', (d) => `url(#clip-${d.data.id})`);
-
-    // Tên
     this.nodeSelection
       .append('text')
       .attr('x', 58)
@@ -857,8 +775,6 @@ export class TreeViewComponent {
         const n = d.data.data.fullName;
         return n.length > 15 ? n.slice(0, 13) + '…' : n;
       });
-
-    // Năm sinh-mất
     this.nodeSelection
       .append('text')
       .attr('x', 58)
@@ -871,8 +787,6 @@ export class TreeViewComponent {
         const x = m.deathDate ? new Date(m.deathDate).getFullYear() : '';
         return x ? `${b}–${x}` : `${b}`;
       });
-
-    // Chi badge
     this.nodeSelection
       .append('text')
       .attr('x', 58)
@@ -880,8 +794,6 @@ export class TreeViewComponent {
       .attr('font-size', '9px')
       .attr('fill', '#4ade8088')
       .text((d) => (d.data.data as any).chi?.name ?? '');
-
-    // Đời badge
     this.nodeSelection
       .append('text')
       .attr('x', NODE_W - 6)
@@ -890,8 +802,6 @@ export class TreeViewComponent {
       .attr('fill', '#d2992280')
       .attr('text-anchor', 'end')
       .text((d) => `Đời ${d.data.data.generation}`);
-
-    // ── Preview button 📊 ──────────────────────────────────────
     this.nodeSelection
       .append('text')
       .attr('x', NODE_W - 6)
@@ -905,10 +815,7 @@ export class TreeViewComponent {
         ev.stopPropagation();
         this.openPreview(d.data.data);
       });
-
-    // ── Expand button (collapsed nodes only) ──────────────────
     const expandBtn = this.nodeSelection.filter((d: any) => !!d._children);
-
     expandBtn
       .append('rect')
       .attr('x', NODE_W / 2 - 30)
@@ -924,7 +831,6 @@ export class TreeViewComponent {
         ev.stopPropagation();
         this.toggleExpand(d);
       });
-
     expandBtn
       .append('text')
       .attr('x', NODE_W / 2)
@@ -934,15 +840,10 @@ export class TreeViewComponent {
       .attr('fill', '#60a5fa')
       .style('pointer-events', 'none')
       .text((d: any) => `▼ ${d._children?.length ?? ''} con`);
-
-    // Dismiss
     svg.on('click', () => this.clearHighlight());
-
-    // ── Fit toàn bộ cây vào viewport ─────────────────────────
     this.fitView(svg, g, W, H, zoom);
   }
 
-  // ── Fit view ─────────────────────────────────────────────────
   private fitView(
     svg: d3.Selection<SVGSVGElement, unknown, any, any>,
     g: d3.Selection<SVGGElement, unknown, any, any>,
@@ -957,10 +858,10 @@ export class TreeViewComponent {
     const scale = Math.min(
       (W - pad * 2) / bounds.width,
       (H - pad * 2) / bounds.height,
-      1,
+      1.2,
     );
     const tx = W / 2 - (bounds.x + bounds.width / 2) * scale;
-    const ty = pad - bounds.y * scale;
+    const ty = H / 2 - (bounds.y + bounds.height / 2) * scale;
     const t = d3.zoomIdentity.translate(tx, ty).scale(scale);
     if (animated) {
       svg.transition().duration(450).call(zoom.transform, t);
@@ -969,7 +870,6 @@ export class TreeViewComponent {
     }
   }
 
-  // ── Click: highlight + emit ──────────────────────────────────
   private onNodeClick(d: d3.HierarchyPointNode<TreeNode>) {
     const ancestorIds = this.getAncestorIds(d);
     this.selectedId.set(d.data.id);
@@ -979,16 +879,13 @@ export class TreeViewComponent {
     this.searchOpen.set(false);
   }
 
-  // ── Toggle expand — mở/đóng toàn bộ cùng depth ──────────────
   private toggleExpand(clicked: d3.HierarchyPointNode<TreeNode>) {
     const cAny = clicked as any;
     const isOpening = !!cAny._children;
     if (!cAny._children && !clicked.children?.length) return;
-
     const peers = (this.rootHierarchy?.descendants() ?? []).filter(
       (n: any) => n.depth === clicked.depth,
     );
-
     for (const n of peers as any[]) {
       if (isOpening) {
         if (n._children) {
@@ -1006,7 +903,6 @@ export class TreeViewComponent {
         }
       }
     }
-
     const prevId = this.selectedId();
     this.renderTree(this.members(), this.relations());
     if (prevId) {
@@ -1019,7 +915,6 @@ export class TreeViewComponent {
     }
   }
 
-  // ── Search ───────────────────────────────────────────────────
   setMode(mode: 'tree' | 'group') {
     this.treeMode.set(mode);
     this.clearHighlight();
@@ -1053,30 +948,19 @@ export class TreeViewComponent {
     this.clearHighlight();
   }
 
-  // Khi focus lại input thì mở dropdown nếu đang có kết quả
   onSearchFocus() {
-    if (this.searchResults().length > 0) {
-      this.searchOpen.set(true);
-    }
+    if (this.searchResults().length > 0) this.searchOpen.set(true);
   }
-
   onSearchBlur() {
-    // Đủ thời gian để mousedown trên dropdown item kịp fire trước khi blur đóng
     setTimeout(() => this.searchOpen.set(false), 250);
   }
 
   selectResult(member: Member) {
     this.searchQuery.set(member.fullName);
     this.searchOpen.set(false);
-
-    // Mở collapsed ancestors (BFS qua _children)
     this.expandPathTo(member.id);
-
-    // Lưu selectedId trước khi render
     this.selectedId.set(member.id);
     this.renderTree(this.members(), this.relations());
-
-    // Bước 1: fitView toàn bộ cây (animated) để user thấy cấu trúc mới
     if (this.svgRef && this.zoomRef) {
       const el = this.svgRef.nativeElement;
       const svg = d3.select<SVGSVGElement, unknown>(el);
@@ -1085,8 +969,7 @@ export class TreeViewComponent {
       const H = el.clientHeight || 600;
       this.fitView(svg, g, W, H, this.zoomRef, true);
     }
-
-    // Bước 2: sau khi fitView xong (450ms) → highlight + pan đến node
+    // Sau khi fitView xong → highlight node (không panToNode để tránh mất centering)
     setTimeout(() => {
       const node = this.rootHierarchy
         ?.descendants()
@@ -1098,14 +981,11 @@ export class TreeViewComponent {
       this.highlightIds.set(ancestorIds);
       this.applyHighlight(node, ancestorIds);
       this.memberClicked.emit(member);
-      this.panToNode(node);
     }, 520);
   }
 
-  // ── Expand collapsed ancestors (BFS qua cả _children) ───────
   private expandPathTo(targetId: string) {
     if (!this.rootHierarchy) return;
-    // BFS qua cả children lẫn _children để reach tất cả nodes kể cả collapsed
     const all: any[] = [];
     const q = [this.rootHierarchy as any];
     while (q.length) {
@@ -1121,8 +1001,6 @@ export class TreeViewComponent {
         parentOf.set(c.data.id, n),
       );
     });
-    // Trace từ target → root, thêm TẤT CẢ ancestors vào userExpandedIds
-    // (không chỉ những node có _children — vì depth 9+ vẫn có .children sau each())
     let cur = all.find((n) => n.data.id === targetId);
     while (cur) {
       const p = parentOf.get(cur.data.id);
@@ -1137,7 +1015,7 @@ export class TreeViewComponent {
     }
   }
 
-  // ── Pan SVG đến node ─────────────────────────────────────────
+  // FIX 2: H/2 thay vì H/3 — node center theo chiều dọc thay vì bị đẩy lên trên
   private panToNode(node: d3.HierarchyPointNode<TreeNode>) {
     if (!this.svgRef || !this.zoomRef) return;
     const el = this.svgRef.nativeElement;
@@ -1153,23 +1031,20 @@ export class TreeViewComponent {
       .call(
         this.zoomRef.translateBy,
         (W / 2 - nx) / cur.k,
-        (H / 3 - ny) / cur.k,
+        (H / 2 - ny) / cur.k, // FIX: H/2 thay H/3
       );
   }
 
-  // ── Apply highlight ──────────────────────────────────────────
   private applyHighlight(
     selected: d3.HierarchyPointNode<TreeNode>,
     ancestorIds: Set<string>,
   ) {
     if (!this.nodeSelection || !this.linkSelection) return;
-
     this.nodeSelection.each(function (d) {
       const node = d3.select(this);
       const isSelected = d.data.id === selected.data.id;
       const isAncestor = !isSelected && ancestorIds.has(d.data.id);
       const isDimmed = !ancestorIds.has(d.data.id);
-
       node
         .select('rect.node-bg')
         .transition()
@@ -1187,13 +1062,11 @@ export class TreeViewComponent {
           return d.data.data.deathDate ? '#334155' : '#2a3a50';
         })
         .attr('stroke-width', isSelected ? 2.5 : isAncestor ? 2 : 1.5);
-
       node
         .transition()
         .duration(250)
         .attr('opacity', isDimmed ? 0.35 : 1);
     });
-
     this.linkSelection.each(function (d) {
       const lit =
         ancestorIds.has((d.source as any).data.id) &&
@@ -1205,8 +1078,6 @@ export class TreeViewComponent {
         .attr('stroke-width', lit ? 2.5 : 1.5)
         .attr('opacity', lit ? 1 : 0.2);
     });
-
-    // Selected marker dot
     const svgG = d3
       .select(this.svgRef.nativeElement)
       .select<SVGGElement>('g.tree-root');
@@ -1248,7 +1119,6 @@ export class TreeViewComponent {
     d3.select(this.svgRef.nativeElement).select('.selected-marker').remove();
   }
 
-  // ── Subtree preview ──────────────────────────────────────────
   openPreview(member: Member) {
     const parentRels = this.relations().filter(
       (r) => (r as any).type === 'PARENT',
@@ -1259,8 +1129,6 @@ export class TreeViewComponent {
       childrenMap.get(r.fromMemberId)!.push(r.toMemberId);
     });
     const memberMap = new Map(this.members().map((m) => [m.id, m]));
-
-    // Đếm tất cả hậu duệ
     let descCount = 0;
     const countDesc = (id: string) => {
       (childrenMap.get(id) ?? []).forEach((cid) => {
@@ -1270,11 +1138,11 @@ export class TreeViewComponent {
     };
     countDesc(member.id);
 
-    // Build subtree tối đa 4 đời
+    // FIX 3b: tăng depth lên 6 để preview đủ sâu cho cây phức tạp
     const buildSub = (id: string, depth: number): TreeNode | null => {
       const m = memberMap.get(id);
       if (!m) return null;
-      if (depth >= 4) return { id, data: m, children: [] };
+      if (depth >= 6) return { id, data: m, children: [] };
       const kids = (childrenMap.get(id) ?? [])
         .map((cid) => buildSub(cid, depth + 1))
         .filter(Boolean) as TreeNode[];
@@ -1282,12 +1150,9 @@ export class TreeViewComponent {
     };
     const subtree = buildSub(member.id, 0);
     if (!subtree) return;
-
     this.previewMember.set(member);
     this.previewDescCount.set(descCount);
     this.previewVisible.set(true);
-
-    // Dùng getElementById vì @ViewChild không update kịp trong @if block
     setTimeout(() => {
       const svgEl = document.getElementById(
         'preview-svg',
@@ -1299,11 +1164,19 @@ export class TreeViewComponent {
   private renderPreviewTree(subtree: TreeNode, svgEl: SVGSVGElement) {
     const svg = d3.select<SVGSVGElement, unknown>(svgEl);
     svg.selectAll('*').remove();
-
     const W = svgEl.clientWidth || 780;
     const H = svgEl.clientHeight || 340;
-    const NW = 120,
-      NH = 54;
+
+    // FIX 3a: density factor — cây phức tạp nhiều node → thu nhỏ để vừa panel
+    const countNodes = (n: TreeNode): number =>
+      1 + (n.children ?? []).reduce((s, c) => s + countNodes(c), 0);
+    const total = countNodes(subtree);
+    const density = Math.max(
+      0.4,
+      Math.min(1.0, Math.sqrt(30 / Math.max(total, 1))),
+    );
+    const NW = Math.round(120 * density);
+    const NH = Math.round(54 * density);
 
     const g = svg.append('g');
     const zoom = d3
@@ -1311,19 +1184,21 @@ export class TreeViewComponent {
       .scaleExtent([0.2, 2])
       .on('zoom', (e) => g.attr('transform', e.transform));
     svg.call(zoom);
-
     const root = d3.hierarchy(subtree);
-    d3.tree<TreeNode>().nodeSize([NW + 16, NH + 48])(root as any);
+    d3
+      .tree<TreeNode>()
+      .nodeSize([NW + Math.round(16 * density), NH + Math.round(48 * density)])(
+      root as any,
+    );
 
-    // Links
     g.append('g')
       .selectAll('path')
       .data(root.links())
       .join('path')
       .attr('d', (d: any) => {
         const sx = d.source.x,
-          sy = d.source.y + NH;
-        const tx = d.target.x,
+          sy = d.source.y + NH,
+          tx = d.target.x,
           ty = d.target.y;
         const my = (sy + ty) / 2;
         return `M${sx},${sy} C${sx},${my} ${tx},${my} ${tx},${ty}`;
@@ -1332,14 +1207,12 @@ export class TreeViewComponent {
       .attr('stroke', '#2a3a4a')
       .attr('stroke-width', 1.2);
 
-    // Nodes
     const nodes = g
       .append('g')
       .selectAll('g')
       .data(root.descendants())
       .join('g')
       .attr('transform', (d: any) => `translate(${d.x - NW / 2},${d.y})`);
-
     nodes
       .append('rect')
       .attr('width', NW)
@@ -1352,49 +1225,48 @@ export class TreeViewComponent {
       })
       .attr('stroke', (d: any) => (d.depth === 0 ? '#60a5fa' : '#2a3a50'))
       .attr('stroke-width', (d: any) => (d.depth === 0 ? 2 : 1.2));
-
+    const fs1 = Math.max(8, Math.round(10 * density));
+    const fs2 = Math.max(7, Math.round(9 * density));
     nodes
       .append('text')
       .attr('x', NW / 2)
-      .attr('y', 22)
+      .attr('y', NH * 0.42)
       .attr('text-anchor', 'middle')
-      .attr('font-size', '10px')
+      .attr('font-size', `${fs1}px`)
       .attr('fill', '#e2e8f0')
       .attr('font-weight', '600')
       .text((d: any) => {
         const n = d.data.data.fullName;
-        return n.length > 14 ? n.slice(0, 12) + '…' : n;
+        const max = Math.round(14 * density);
+        return n.length > max ? n.slice(0, max - 2) + '…' : n;
       });
-
     nodes
       .append('text')
       .attr('x', NW / 2)
-      .attr('y', 36)
+      .attr('y', NH * 0.67)
       .attr('text-anchor', 'middle')
-      .attr('font-size', '9px')
+      .attr('font-size', `${fs2}px`)
       .attr('fill', '#64748b')
       .text((d: any) => `Đời ${d.data.data.generation}`);
-
     nodes
       .append('text')
       .attr('x', NW / 2)
-      .attr('y', 48)
+      .attr('y', NH * 0.9)
       .attr('text-anchor', 'middle')
-      .attr('font-size', '9px')
+      .attr('font-size', `${fs2}px`)
       .attr('fill', '#4ade8066')
       .text((d: any) => (d.data.data as any).chi?.name ?? '');
 
-    // Auto-fit
+    // Auto-fit: center cả X và Y, KHÔNG cap scale=1 để cây phức tạp co lại vừa panel
     const bounds = (g.node() as SVGGElement).getBBox();
     if (bounds.width && bounds.height) {
-      const k = Math.min((W - 40) / bounds.width, (H - 40) / bounds.height, 1);
+      const k = Math.min((W - 40) / bounds.width, (H - 40) / bounds.height); // no cap
       const tx = W / 2 - (bounds.x + bounds.width / 2) * k;
-      const ty = 20 - bounds.y * k;
+      const ty = H / 2 - (bounds.y + bounds.height / 2) * k;
       svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
     }
   }
 
-  // ── Tooltip ─────────────────────────────────────────────────
   private showTooltip(event: MouseEvent, d: d3.HierarchyPointNode<TreeNode>) {
     const m = d.data.data;
     const b = m.birthDate ? new Date(m.birthDate).getFullYear() : '?';

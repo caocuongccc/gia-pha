@@ -19,8 +19,6 @@ import { RelationFormComponent } from '../../member-form/relation-form.component
 import { ExportButtonsComponent } from '../../tree-view/export-buttons.component';
 import { ManageChiPhaiComponent } from '../../settings/manage-chi-phai.component';
 import type { Member } from '@gia-pha/shared-types';
-import { HttpClient } from '@angular/common/http';
-import { environment } from 'apps/frontend/src/environments/environment';
 
 type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
 type ViewMode = 'tree' | 'generation' | 'organization';
@@ -37,7 +35,8 @@ type ViewMode = 'tree' | 'generation' | 'organization';
     ManageChiPhaiComponent,
   ],
   template: `
-    <div class="layout">
+    <!-- FIX: click bên ngoài đóng share popup -->
+    <div class="layout" (click)="sharePopupOpen.set(false)">
       <!-- ── Header ──────────────────────────────────────────── -->
       <header class="header">
         <button class="btn-back" (click)="goBack()">← Danh sách</button>
@@ -83,12 +82,16 @@ type ViewMode = 'tree' | 'generation' | 'organization';
           <button class="btn-outline" (click)="togglePanel('chiPhai')">
             Chi — Phái
           </button>
+
           <!-- Share button -->
           <div class="share-wrap" style="position:relative">
+            <!-- FIX: stopPropagation để layout-click không đóng popup ngay khi vừa mở -->
             <button
               class="btn-share"
               [class.is-public]="familySvc.selectedFamily()?.isPublic"
-              (click)="sharePopupOpen.set(!sharePopupOpen())"
+              (click)="
+                sharePopupOpen.set(!sharePopupOpen()); $event.stopPropagation()
+              "
             >
               🔗
               {{
@@ -128,6 +131,7 @@ type ViewMode = 'tree' | 'generation' | 'organization';
               </div>
             }
           </div>
+
           <button class="btn-primary" (click)="openAddMember()">+ Thêm</button>
         </div>
       </header>
@@ -135,12 +139,10 @@ type ViewMode = 'tree' | 'generation' | 'organization';
       <!-- ── Body ─────────────────────────────────────────────── -->
       <div class="body">
         <div class="main">
-          <!-- Loading -->
           @if (memberSvc.loading()) {
             <div class="center-msg">Đang tải...</div>
           }
 
-          <!-- Cây D3 -->
           @if (viewMode() === 'tree' && !memberSvc.loading()) {
             @if (memberSvc.members().length > 0) {
               <app-tree-view
@@ -157,7 +159,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
             }
           }
 
-          <!-- Theo đời -->
           @if (viewMode() === 'generation' && !memberSvc.loading()) {
             <div class="gen-view">
               @for (group of memberSvc.byGeneration(); track group.generation) {
@@ -199,7 +200,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                             }
                           </div>
                         }
-                        <!-- Mini actions -->
                         <div
                           class="mc-actions"
                           (click)="$event.stopPropagation()"
@@ -219,7 +219,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
             </div>
           }
 
-          <!-- Theo chi - phái -->
           @if (viewMode() === 'organization' && !memberSvc.loading()) {
             <div class="org-view">
               @for (chiGroup of orgView(); track chiGroup.chi.id) {
@@ -233,7 +232,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                     }
                     <span class="cnt">{{ chiGroup.totalMembers }} người</span>
                   </h3>
-
                   @for (pg of chiGroup.phaiList; track pg.phai.id) {
                     <div class="phai-section">
                       <h4 class="phai-heading">
@@ -286,7 +284,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                       </div>
                     </div>
                   }
-
                   @if (chiGroup.membersNoPhai.length > 0) {
                     <div class="phai-section ungrouped">
                       <h4 class="phai-heading muted">
@@ -306,7 +303,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                   }
                 </div>
               }
-
               @if (orgView().length === 0) {
                 <div class="empty">
                   <p>
@@ -318,9 +314,7 @@ type ViewMode = 'tree' | 'generation' | 'organization';
             </div>
           }
         </div>
-        <!-- /main -->
 
-        <!-- ── Side panel ────────────────────────────────────── -->
         @if (activePanel() !== 'none') {
           <aside class="side-panel">
             <div class="panel-header">
@@ -338,8 +332,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                   Chi — Phái
                 }
               </span>
-
-              <!-- Tabs khi đang xem 1 member -->
               @if (
                 activePanel() === 'editMember' || activePanel() === 'relations'
               ) {
@@ -358,10 +350,8 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                   </button>
                 </div>
               }
-
               <button class="btn-close" (click)="closePanel()">✕</button>
             </div>
-
             <div class="panel-body">
               @if (activePanel() === 'addMember') {
                 <app-member-form
@@ -370,7 +360,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                   (cancelled)="closePanel()"
                 />
               }
-
               @if (
                 activePanel() === 'editMember' && memberSvc.selectedMember()
               ) {
@@ -381,7 +370,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                   (cancelled)="closePanel()"
                 />
               }
-
               @if (
                 activePanel() === 'relations' && memberSvc.selectedMember()
               ) {
@@ -391,7 +379,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
                   (changed)="onRelationChanged()"
                 />
               }
-
               @if (activePanel() === 'chiPhai') {
                 <app-manage-chi-phai [familyId]="familyId" />
               }
@@ -399,7 +386,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
           </aside>
         }
       </div>
-      <!-- /body -->
     </div>
   `,
   styles: [
@@ -411,7 +397,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         background: #09090f;
         color: #e2e8f0;
       }
-
       .header {
         display: flex;
         align-items: center;
@@ -437,7 +422,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         align-items: center;
         gap: 8px;
       }
-
       .btn-back {
         padding: 5px 12px;
         font-size: 12px;
@@ -487,7 +471,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         background: #1e3a6e;
         color: #60a5fa;
       }
-
       .body {
         flex: 1;
         display: flex;
@@ -509,8 +492,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         font-size: 14px;
         text-align: center;
       }
-
-      /* Generation view */
       .gen-view {
         padding: 16px;
         display: flex;
@@ -537,8 +518,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         gap: 8px;
         flex: 1;
       }
-
-      /* Org view */
       .org-view {
         padding: 16px;
         display: flex;
@@ -593,8 +572,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         flex-wrap: wrap;
         gap: 8px;
       }
-
-      /* Member card */
       .member-card {
         position: relative;
         background: #0c1828;
@@ -665,8 +642,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
       .mc-actions button:hover {
         background: #334155;
       }
-
-      /* Side panel */
       .side-panel {
         width: 380px;
         flex-shrink: 0;
@@ -728,7 +703,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         overflow-y: auto;
         padding: 16px;
       }
-
       .btn-share {
         padding: 6px 12px;
         font-size: 12px;
@@ -823,7 +797,6 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   chiPhaiSvc = inject(ChiPhaiService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
-  private http = inject(HttpClient);
 
   familyId = '';
   viewMode = signal<ViewMode>('tree');
@@ -831,20 +804,16 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   sharePopupOpen = signal(false);
   copied = signal(false);
 
+  // FIX 1: route đúng là /share/:token (không phải /public/:id)
   shareUrl = computed(() => {
     const fam = this.familySvc.selectedFamily();
-    return fam ? `${window.location.origin}/public/${fam.id}` : '';
+    return fam ? `${window.location.origin}/share/${fam.id}` : '';
   });
 
   async togglePublic() {
     const f = this.familySvc.selectedFamily();
     if (!f) return;
-    await this.http
-      .patch(`${environment.apiUrl}/api/families/${this.familyId}`, {
-        isPublic: !f.isPublic,
-      })
-      .toPromise();
-    await this.familySvc.loadOne(this.familyId);
+    await this.familySvc.update(this.familyId, { isPublic: !f.isPublic });
   }
 
   copyShareUrl() {
@@ -853,6 +822,7 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
       setTimeout(() => this.copied.set(false), 2000);
     });
   }
+
   orgView = computed(() =>
     this.chiPhaiSvc.chiList().map((chi) => ({
       chi,
@@ -888,7 +858,6 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
     this.chiPhaiSvc.clear();
   }
 
-  // ── Panel helpers ─────────────────────────────────────────
   togglePanel(panel: SidePanel) {
     this.activePanel.set(this.activePanel() === panel ? 'none' : panel);
   }
@@ -913,10 +882,8 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
     this.activePanel.set('relations');
   }
 
-  // ── Event handlers ────────────────────────────────────────
   onMemberClicked(member: Member) {
     this.memberSvc.select(member);
-    // Nếu panel đang mở ở tab quan hệ → giữ nguyên, nếu không → mở edit
     if (this.activePanel() !== 'relations') {
       this.activePanel.set('editMember');
     }
@@ -932,7 +899,6 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   }
 
   async onRelationChanged() {
-    // Reload relations để cây D3 cập nhật
     await this.relationSvc.loadByFamily(this.familyId);
   }
 

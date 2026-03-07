@@ -64,6 +64,9 @@ async function startServer() {
   const { default: chiId } = await import('../api/chi/[id].js');
   const { default: phaiIndex } = await import('../api/phai/index.js');
   const { default: phaiId } = await import('../api/phai/[id].js');
+  const { default: publicFamiliesId } = await import(
+    '../api/public/families/[id].js'
+  );
 
   // Helper: inject :id vào req.query để các handler dùng req.query.id
   const injectId = (handler: any) => (req: any, res: any) => {
@@ -72,6 +75,11 @@ async function startServer() {
   };
 
   // ── Routes: specific trước, generic sau ──────────────────────
+  // public (no auth) — specific sub-routes TRƯỚC route generic :id
+  app.all('/api/public/families/:id/members', injectId(publicFamiliesId));
+  app.all('/api/public/families/:id/relations', injectId(publicFamiliesId));
+  app.all('/api/public/families/:id', injectId(publicFamiliesId));
+
   // families
   app.all('/api/families/:id/tree', (req, res) =>
     familiesTree(req as any, res as any),
