@@ -108,6 +108,85 @@ interface GroupNode {
       </div>
     }
 
+    <!-- Group node popup -->
+    @if (groupPopupData()) {
+      <div class="grp-overlay" (click)="groupPopupData.set(null)">
+        <div class="grp-panel" (click)="$event.stopPropagation()">
+          <button class="grp-close" (click)="groupPopupData.set(null)">
+            ✕
+          </button>
+          <div class="grp-header">
+            <span class="grp-gen"
+              >Đời {{ groupPopupData()!.patriarch.generation }}</span
+            >
+            <span class="grp-name">{{
+              groupPopupData()!.patriarch.fullName
+            }}</span>
+            @if (groupPopupData()!.patriarch.alias) {
+              <span class="grp-alias"
+                >({{ groupPopupData()!.patriarch.alias }})</span
+              >
+            }
+          </div>
+          <div class="grp-stats">
+            <div class="grp-stat">
+              <span class="grp-sn">{{
+                groupPopupData()!.leafChildren.length
+              }}</span
+              ><span class="grp-sl">con trực tiếp</span>
+            </div>
+            <div class="grp-stat">
+              <span class="grp-sn">{{
+                groupPopupData()!.children?.length ?? 0
+              }}</span
+              ><span class="grp-sl">nhánh con</span>
+            </div>
+            <div class="grp-stat">
+              <span class="grp-sn">{{ groupPopupDescCount() }}</span
+              ><span class="grp-sl">tổng trực tiếp</span>
+            </div>
+          </div>
+          @if (groupPopupData()!.leafChildren.length > 0) {
+            <div class="grp-sec">Con trực tiếp (chưa có con)</div>
+            <div class="grp-list">
+              @for (c of groupPopupData()!.leafChildren; track c.id) {
+                <div class="grp-row">
+                  <span
+                    class="grp-dot"
+                    [class.male]="c.gender === 'MALE'"
+                    [class.female]="c.gender !== 'MALE'"
+                  ></span>
+                  <span class="grp-rname">{{ c.fullName }}</span>
+                  @if (c.birthDate) {
+                    <span class="grp-ryear">{{ c.birthDate }}</span>
+                  }
+                  <span class="grp-rgen">Đ{{ c.generation }}</span>
+                </div>
+              }
+            </div>
+          }
+          @if ((groupPopupData()!.children?.length ?? 0) > 0) {
+            <div class="grp-sec">Nhánh con</div>
+            <div class="grp-list">
+              @for (sub of groupPopupData()!.children!; track sub.id) {
+                <div class="grp-row">
+                  <span class="grp-dot male"></span>
+                  <span class="grp-rname">{{ sub.patriarch.fullName }}</span>
+                  <span class="grp-rgen">Đ{{ sub.patriarch.generation }}</span>
+                  <span class="grp-rcnt"
+                    >{{
+                      sub.leafChildren.length + (sub.children?.length ?? 0)
+                    }}
+                    con</span
+                  >
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+
     <div
       #tooltip
       class="node-tooltip"
@@ -365,6 +444,239 @@ interface GroupNode {
         color: #4ade80;
         margin-top: 3px;
       }
+
+      /* Read-only popup */
+      .ro-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 110;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(3px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .ro-panel {
+        background: #0c1120;
+        border: 1px solid #1e3a6e;
+        border-radius: 14px;
+        padding: 24px 28px;
+        min-width: 240px;
+        max-width: 320px;
+        text-align: center;
+        position: relative;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+      }
+      .ro-close {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        background: none;
+        border: none;
+        color: #475569;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      .ro-close:hover {
+        color: #e2e8f0;
+      }
+      .ro-avatar {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        overflow: hidden;
+        margin: 0 auto 12px;
+        border: 2px solid #1e3a6e;
+      }
+      .ro-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .ro-name {
+        font-size: 16px;
+        font-weight: 700;
+        color: #e2e8f0;
+        margin-bottom: 3px;
+      }
+      .ro-alias {
+        font-size: 12px;
+        color: #64748b;
+        margin-bottom: 6px;
+      }
+      .ro-gen {
+        font-size: 11px;
+        color: #d29922;
+        background: #1a1200;
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 8px;
+        margin-bottom: 14px;
+      }
+      .ro-fields {
+        text-align: left;
+      }
+      .ro-field {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px solid #0f1828;
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      .ro-field:last-child {
+        border-bottom: none;
+      }
+      .ro-lbl {
+        font-size: 10px;
+        color: #475569;
+        width: 36px;
+        flex-shrink: 0;
+      }
+
+      /* Group popup */
+      .grp-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 110;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(3px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .grp-panel {
+        background: #0c1120;
+        border: 1px solid #1e3a6e;
+        border-radius: 14px;
+        padding: 20px 24px;
+        min-width: 280px;
+        max-width: 380px;
+        max-height: 70vh;
+        overflow-y: auto;
+        position: relative;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+      }
+      .grp-close {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        background: none;
+        border: none;
+        color: #475569;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      .grp-close:hover {
+        color: #e2e8f0;
+      }
+      .grp-header {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .grp-gen {
+        font-size: 10px;
+        color: #d29922;
+        background: #1a1200;
+        padding: 2px 8px;
+        border-radius: 6px;
+        flex-shrink: 0;
+      }
+      .grp-name {
+        font-size: 15px;
+        font-weight: 700;
+        color: #e2e8f0;
+      }
+      .grp-alias {
+        font-size: 11px;
+        color: #64748b;
+      }
+      .grp-stats {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .grp-stat {
+        flex: 1;
+        background: #0f1828;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 8px;
+        text-align: center;
+      }
+      .grp-sn {
+        display: block;
+        font-size: 18px;
+        font-weight: 700;
+        color: #60a5fa;
+      }
+      .grp-sl {
+        display: block;
+        font-size: 9px;
+        color: #475569;
+        margin-top: 2px;
+      }
+      .grp-sec {
+        font-size: 10px;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 12px 0 6px;
+        padding-top: 10px;
+        border-top: 1px solid #0f1828;
+      }
+      .grp-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .grp-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        padding: 4px 6px;
+        border-radius: 6px;
+        transition: background 0.15s;
+      }
+      .grp-row:hover {
+        background: #0f1828;
+      }
+      .grp-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .grp-dot.male {
+        background: #3b82f6;
+      }
+      .grp-dot.female {
+        background: #a855f7;
+      }
+      .grp-rname {
+        flex: 1;
+        color: #94a3b8;
+      }
+      .grp-rgen {
+        font-size: 10px;
+        color: #475569;
+      }
+      .grp-ryear {
+        font-size: 10px;
+        color: #334155;
+        margin-right: 2px;
+      }
+      .grp-rcnt {
+        font-size: 10px;
+        color: #22c55e;
+        background: #0a1a0e;
+        padding: 1px 6px;
+        border-radius: 5px;
+      }
     `,
   ],
 })
@@ -393,6 +705,19 @@ export class TreeViewComponent {
 
   tooltipVisible = signal(false);
   tooltipData = signal({ name: '', meta: '', chi: '' });
+
+  // viewOnly popup
+  roPopupMember = signal<Member | null>(null);
+  roPopupChiName = signal('');
+
+  // group popup
+  groupPopupData = signal<GroupNode | null>(null);
+  groupPopupDescCount = signal(0);
+
+  roDateFmt(d: string | Date): string {
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+  }
 
   private nodeSelection!: d3.Selection<
     SVGGElement,
@@ -647,7 +972,9 @@ export class TreeViewComponent {
     });
     cards.on('click', (ev, d) => {
       ev.stopPropagation();
-      this.memberClicked.emit(d.data.patriarch);
+      const desc = d.data.leafChildren.length + (d.data.children?.length ?? 0);
+      this.groupPopupDescCount.set(desc);
+      this.groupPopupData.set(d.data);
     });
     svg.on('click', () => {});
     const bounds = (g.node() as SVGGElement).getBBox();
@@ -875,6 +1202,7 @@ export class TreeViewComponent {
     this.selectedId.set(d.data.id);
     this.highlightIds.set(ancestorIds);
     this.applyHighlight(d, ancestorIds);
+    // Luôn emit để parent xử lý (viewOnly hay không) — parent tự quyết hiện panel gì
     this.memberClicked.emit(d.data.data);
     this.searchOpen.set(false);
   }
@@ -961,27 +1289,30 @@ export class TreeViewComponent {
     this.expandPathTo(member.id);
     this.selectedId.set(member.id);
     this.renderTree(this.members(), this.relations());
-    if (this.svgRef && this.zoomRef) {
+
+    // 1. Emit ngay → parent mở panel (ảnh hưởng clientWidth của SVG)
+    const node = this.rootHierarchy
+      ?.descendants()
+      .find((d: any) => d.data.id === member.id) as
+      | d3.HierarchyPointNode<TreeNode>
+      | undefined;
+    if (node) {
+      const ancestorIds = this.getAncestorIds(node);
+      this.highlightIds.set(ancestorIds);
+      this.applyHighlight(node, ancestorIds);
+    }
+    this.memberClicked.emit(member);
+
+    // 2. Chờ panel mở xong (~300ms) rồi fitView lại với đúng width
+    setTimeout(() => {
+      if (!this.svgRef || !this.zoomRef) return;
       const el = this.svgRef.nativeElement;
       const svg = d3.select<SVGSVGElement, unknown>(el);
       const g = svg.select<SVGGElement>('g.tree-root');
       const W = el.clientWidth || 900;
       const H = el.clientHeight || 600;
       this.fitView(svg, g, W, H, this.zoomRef, true);
-    }
-    // Sau khi fitView xong → highlight node (không panToNode để tránh mất centering)
-    setTimeout(() => {
-      const node = this.rootHierarchy
-        ?.descendants()
-        .find((d: any) => d.data.id === member.id) as
-        | d3.HierarchyPointNode<TreeNode>
-        | undefined;
-      if (!node) return;
-      const ancestorIds = this.getAncestorIds(node);
-      this.highlightIds.set(ancestorIds);
-      this.applyHighlight(node, ancestorIds);
-      this.memberClicked.emit(member);
-    }, 520);
+    }, 320);
   }
 
   private expandPathTo(targetId: string) {
@@ -1167,29 +1498,39 @@ export class TreeViewComponent {
     const W = svgEl.clientWidth || 780;
     const H = svgEl.clientHeight || 340;
 
-    // FIX 3a: density factor — cây phức tạp nhiều node → thu nhỏ để vừa panel
-    const countNodes = (n: TreeNode): number =>
-      1 + (n.children ?? []).reduce((s, c) => s + countNodes(c), 0);
-    const total = countNodes(subtree);
-    const density = Math.max(
-      0.4,
-      Math.min(1.0, Math.sqrt(30 / Math.max(total, 1))),
-    );
-    const NW = Math.round(120 * density);
-    const NH = Math.round(54 * density);
+    // Cắt cây tối đa 3 đời để popup gọn + dễ nhìn
+    const MAX_GEN = 3;
+    const trimTree = (n: TreeNode, depth: number): TreeNode => ({
+      ...n,
+      children:
+        depth < MAX_GEN
+          ? (n.children ?? []).map((c) => trimTree(c, depth + 1))
+          : [],
+    });
+    const trimmed = trimTree(subtree, 0);
+
+    // Đếm nodes tại mỗi cấp để tính spacing hợp lý
+    const nodesPerLevel = new Map<number, number>();
+    const walkLevels = (n: TreeNode, lvl: number) => {
+      nodesPerLevel.set(lvl, (nodesPerLevel.get(lvl) ?? 0) + 1);
+      (n.children ?? []).forEach((c) => walkLevels(c, lvl + 1));
+    };
+    walkLevels(trimmed, 0);
+    const maxWide = Math.max(...Array.from(nodesPerLevel.values()));
+
+    // Node width dựa theo level rộng nhất — fit vào panel width
+    const NW = Math.max(50, Math.min(130, Math.floor((W - 40) / maxWide) - 12));
+    const NH = Math.max(34, Math.min(54, NW * 0.42));
+    const VGAP = Math.max(36, Math.min(70, NH * 1.2));
 
     const g = svg.append('g');
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.2, 2])
+      .scaleExtent([0.15, 3])
       .on('zoom', (e) => g.attr('transform', e.transform));
     svg.call(zoom);
-    const root = d3.hierarchy(subtree);
-    d3
-      .tree<TreeNode>()
-      .nodeSize([NW + Math.round(16 * density), NH + Math.round(48 * density)])(
-      root as any,
-    );
+    const root = d3.hierarchy(trimmed);
+    d3.tree<TreeNode>().nodeSize([NW + 8, NH + VGAP])(root as any);
 
     g.append('g')
       .selectAll('path')
@@ -1213,56 +1554,89 @@ export class TreeViewComponent {
       .data(root.descendants())
       .join('g')
       .attr('transform', (d: any) => `translate(${d.x - NW / 2},${d.y})`);
+
     nodes
       .append('rect')
       .attr('width', NW)
       .attr('height', NH)
-      .attr('rx', 7)
-      .attr('fill', (d: any) => {
-        if (d.depth === 0)
-          return d.data.data.gender === 'MALE' ? '#1a3a6a' : '#3a1a5a';
-        return d.data.data.gender === 'MALE' ? '#0e1a2d' : '#1a0e28';
-      })
+      .attr('rx', 6)
+      .attr('fill', (d: any) =>
+        d.depth === 0
+          ? d.data.data.gender === 'MALE'
+            ? '#1a3a6a'
+            : '#3a1a5a'
+          : d.data.data.gender === 'MALE'
+            ? '#0e1a2d'
+            : '#1a0e28',
+      )
       .attr('stroke', (d: any) => (d.depth === 0 ? '#60a5fa' : '#2a3a50'))
       .attr('stroke-width', (d: any) => (d.depth === 0 ? 2 : 1.2));
-    const fs1 = Math.max(8, Math.round(10 * density));
-    const fs2 = Math.max(7, Math.round(9 * density));
+
+    const fs1 = Math.max(7, Math.min(11, Math.round(NW / 12)));
+    const fs2 = Math.max(6, fs1 - 1);
+    const maxChars = Math.max(4, Math.round(NW / 7));
+
     nodes
       .append('text')
       .attr('x', NW / 2)
-      .attr('y', NH * 0.42)
+      .attr('y', NH * 0.44)
       .attr('text-anchor', 'middle')
       .attr('font-size', `${fs1}px`)
       .attr('fill', '#e2e8f0')
       .attr('font-weight', '600')
       .text((d: any) => {
         const n = d.data.data.fullName;
-        const max = Math.round(14 * density);
-        return n.length > max ? n.slice(0, max - 2) + '…' : n;
+        return n.length > maxChars ? n.slice(0, maxChars - 1) + '…' : n;
       });
     nodes
       .append('text')
       .attr('x', NW / 2)
-      .attr('y', NH * 0.67)
+      .attr('y', NH * 0.72)
       .attr('text-anchor', 'middle')
       .attr('font-size', `${fs2}px`)
       .attr('fill', '#64748b')
-      .text((d: any) => `Đời ${d.data.data.generation}`);
-    nodes
-      .append('text')
-      .attr('x', NW / 2)
-      .attr('y', NH * 0.9)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', `${fs2}px`)
-      .attr('fill', '#4ade8066')
-      .text((d: any) => (d.data.data as any).chi?.name ?? '');
+      .text((d: any) => `Đ${d.data.data.generation}`);
 
-    // Auto-fit: center cả X và Y, KHÔNG cap scale=1 để cây phức tạp co lại vừa panel
+    // Nếu có con bị cắt ở đời 3, hiện "▼ N" indicator
+    nodes.filter((d: any) => {
+      const orig = subtree as any; // check original
+      const hasMore =
+        d.depth === MAX_GEN && (d.data.children?.length ?? 0) === 0;
+      return hasMore && d.depth === MAX_GEN;
+    });
+    // Đánh dấu node có children bị cắt
+    const origChildCount = (id: string): number => {
+      const walk2 = (n: TreeNode): number => {
+        if (n.id === id) return (n.children ?? []).length;
+        for (const c of n.children ?? []) {
+          const r = walk2(c);
+          if (r >= 0) return r;
+        }
+        return -1;
+      };
+      return walk2(subtree);
+    };
+    nodes
+      .filter((d: any) => d.depth === MAX_GEN)
+      .each(function (d: any) {
+        const cnt = origChildCount(d.data.id);
+        if (cnt > 0) {
+          d3.select(this)
+            .append('text')
+            .attr('x', NW / 2)
+            .attr('y', NH - 3)
+            .attr('text-anchor', 'middle')
+            .attr('font-size', `${fs2}px`)
+            .attr('fill', '#3b82f688')
+            .text(`▼${cnt}`);
+        }
+      });
+
     const bounds = (g.node() as SVGGElement).getBBox();
     if (bounds.width && bounds.height) {
-      const k = Math.min((W - 40) / bounds.width, (H - 40) / bounds.height); // no cap
+      const k = Math.min((W - 40) / bounds.width, (H - 40) / bounds.height);
       const tx = W / 2 - (bounds.x + bounds.width / 2) * k;
-      const ty = H / 2 - (bounds.y + bounds.height / 2) * k;
+      const ty = H * 0.12 - bounds.y * k;
       svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
     }
   }
