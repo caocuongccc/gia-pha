@@ -20,6 +20,7 @@ import { ExportButtonsComponent } from '../../tree-view/export-buttons.component
 import { ManageChiPhaiComponent } from '../../settings/manage-chi-phai.component';
 import type { Member } from '@gia-pha/shared-types';
 import { HttpClient } from '@angular/common/http';
+import { environment } from 'apps/frontend/src/environments/environment';
 
 type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
 type ViewMode = 'tree' | 'generation' | 'organization';
@@ -839,7 +840,9 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
     const f = this.familySvc.selectedFamily();
     if (!f) return;
     await this.http
-      .patch(`/api/families/${this.familyId}`, { isPublic: !f.isPublic })
+      .patch(`${environment.apiUrl}/api/families/${this.familyId}`, {
+        isPublic: !f.isPublic,
+      })
       .toPromise();
     await this.familySvc.loadOne(this.familyId);
   }
