@@ -18,10 +18,13 @@ import { MemberFormComponent } from '../../member-form/member-form.component';
 import { RelationFormComponent } from '../../member-form/relation-form.component';
 import { ExportButtonsComponent } from '../../tree-view/export-buttons.component';
 import { ManageChiPhaiComponent } from '../../settings/manage-chi-phai.component';
+import {
+  FamilyHeaderActionsComponent,
+  type ViewMode,
+} from '../components/family-header-actions.component';
 import type { Member } from '@gia-pha/shared-types';
 
 type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
-type ViewMode = 'tree' | 'generation' | 'organization';
 
 @Component({
   selector: 'app-family-detail',
@@ -33,10 +36,10 @@ type ViewMode = 'tree' | 'generation' | 'organization';
     RelationFormComponent,
     ExportButtonsComponent,
     ManageChiPhaiComponent,
+    FamilyHeaderActionsComponent,
   ],
   template: `
-    <!-- FIX: click bên ngoài đóng share popup -->
-    <div class="layout" (click)="sharePopupOpen.set(false)">
+    <div class="layout">
       <!-- ── Header ──────────────────────────────────────────── -->
       <header class="header">
         <button class="btn-back" (click)="goBack()">← Danh sách</button>
@@ -50,90 +53,16 @@ type ViewMode = 'tree' | 'generation' | 'organization';
           </span>
         </div>
 
-        <div class="header-actions">
-          <div class="view-toggle">
-            <button
-              [class.active]="viewMode() === 'tree'"
-              (click)="viewMode.set('tree')"
-              title="Cây gia phả"
-            >
-              🌳
-            </button>
-            <button
-              [class.active]="viewMode() === 'generation'"
-              (click)="viewMode.set('generation')"
-              title="Theo đời"
-            >
-              📋
-            </button>
-            <button
-              [class.active]="viewMode() === 'organization'"
-              (click)="viewMode.set('organization')"
-              title="Theo chi phái"
-            >
-              🏛
-            </button>
-          </div>
-
-          <app-export-buttons
-            svgElementId="family-tree-svg"
-            [familyName]="familySvc.selectedFamily()?.name ?? ''"
-          />
-          <button class="btn-outline" (click)="togglePanel('chiPhai')">
-            Chi — Phái
-          </button>
-
-          <!-- Share button -->
-          <div class="share-wrap" style="position:relative">
-            <!-- FIX: stopPropagation để layout-click không đóng popup ngay khi vừa mở -->
-            <button
-              class="btn-share"
-              [class.is-public]="familySvc.selectedFamily()?.isPublic"
-              (click)="
-                sharePopupOpen.set(!sharePopupOpen()); $event.stopPropagation()
-              "
-            >
-              🔗
-              {{
-                familySvc.selectedFamily()?.isPublic
-                  ? 'Đang chia sẻ'
-                  : 'Chia sẻ'
-              }}
-            </button>
-
-            @if (sharePopupOpen()) {
-              <div class="share-popup" (click)="$event.stopPropagation()">
-                <div class="share-row">
-                  <span class="share-label">Cho phép xem công khai</span>
-                  <button
-                    class="share-toggle"
-                    [class.on]="familySvc.selectedFamily()?.isPublic"
-                    (click)="togglePublic()"
-                  >
-                    {{ familySvc.selectedFamily()?.isPublic ? 'BẬT ✓' : 'TẮT' }}
-                  </button>
-                </div>
-                @if (familySvc.selectedFamily()?.isPublic) {
-                  <div class="share-url-row">
-                    <input
-                      class="share-url-input"
-                      [value]="shareUrl()"
-                      readonly
-                    />
-                    <button class="share-copy-btn" (click)="copyShareUrl()">
-                      {{ copied() ? '✓ Copied!' : 'Copy link' }}
-                    </button>
-                  </div>
-                  <p class="share-hint">
-                    Bất kỳ ai có link đều xem được, không cần đăng nhập.
-                  </p>
-                }
-              </div>
-            }
-          </div>
-
-          <button class="btn-primary" (click)="openAddMember()">+ Thêm</button>
-        </div>
+        <app-family-header-actions
+          [(viewMode)]="viewMode"
+          [family]="familySvc.selectedFamily()"
+          [shareUrl]="shareUrl()"
+          [copied]="copied()"
+          (chiPhaiClicked)="togglePanel('chiPhai')"
+          (togglePublicClicked)="togglePublic()"
+          (copyLinkClicked)="copyShareUrl()"
+          (addMemberClicked)="openAddMember()"
+        />
       </header>
 
       <!-- ── Body ─────────────────────────────────────────────── -->
@@ -453,24 +382,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         border-color: #3b82f6;
         color: #60a5fa;
       }
-      .view-toggle {
-        display: flex;
-        border: 1px solid #1e293b;
-        border-radius: 5px;
-        overflow: hidden;
-      }
-      .view-toggle button {
-        background: none;
-        border: none;
-        color: #64748b;
-        padding: 5px 10px;
-        cursor: pointer;
-        font-size: 14px;
-      }
-      .view-toggle button.active {
-        background: #1e3a6e;
-        color: #60a5fa;
-      }
       .body {
         flex: 1;
         display: flex;
@@ -703,90 +614,6 @@ type ViewMode = 'tree' | 'generation' | 'organization';
         overflow-y: auto;
         padding: 16px;
       }
-      .btn-share {
-        padding: 6px 12px;
-        font-size: 12px;
-        background: none;
-        border: 1px solid #334155;
-        color: #94a3b8;
-        border-radius: 5px;
-        cursor: pointer;
-      }
-      .btn-share:hover {
-        border-color: #60a5fa;
-        color: #60a5fa;
-      }
-      .btn-share.is-public {
-        border-color: #22c55e;
-        color: #22c55e;
-      }
-      .share-popup {
-        position: absolute;
-        top: 38px;
-        right: 0;
-        z-index: 300;
-        background: #0c1828;
-        border: 1px solid #1e3a6e;
-        border-radius: 10px;
-        padding: 14px 16px;
-        min-width: 340px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .share-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      .share-label {
-        font-size: 12px;
-        color: #94a3b8;
-      }
-      .share-toggle {
-        padding: 4px 12px;
-        font-size: 11px;
-        border-radius: 12px;
-        cursor: pointer;
-        border: 1px solid #334155;
-        background: #0a0f1e;
-        color: #64748b;
-      }
-      .share-toggle.on {
-        border-color: #22c55e;
-        color: #22c55e;
-        background: #0a1a0e;
-      }
-      .share-url-row {
-        display: flex;
-        gap: 6px;
-      }
-      .share-url-input {
-        flex: 1;
-        background: #060d1a;
-        border: 1px solid #1e293b;
-        color: #60a5fa;
-        border-radius: 5px;
-        padding: 6px 10px;
-        font-size: 11px;
-        font-family: monospace;
-      }
-      .share-copy-btn {
-        background: #1e3a6e;
-        border: 1px solid #3b82f6;
-        color: #60a5fa;
-        border-radius: 5px;
-        padding: 5px 10px;
-        cursor: pointer;
-        font-size: 11px;
-        white-space: nowrap;
-      }
-      .share-hint {
-        font-size: 10px;
-        color: #475569;
-        margin: 0;
-      }
     `,
   ],
 })
@@ -801,7 +628,6 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   familyId = '';
   viewMode = signal<ViewMode>('tree');
   activePanel = signal<SidePanel>('none');
-  sharePopupOpen = signal(false);
   copied = signal(false);
 
   // FIX 1: route đúng là /share/:token (không phải /public/:id)

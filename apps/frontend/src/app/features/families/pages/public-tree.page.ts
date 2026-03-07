@@ -6,13 +6,14 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { TreeViewComponent } from '../../tree-view/tree-view.component';
+import { FamilyHeaderActionsComponent } from '../components/family-header-actions.component';
 import type { Member, Relationship, Family } from '@gia-pha/shared-types';
 import { environment } from '../../../../environments/environment';
 
 @Component({
   selector: 'app-public-tree',
   standalone: true,
-  imports: [CommonModule, TreeViewComponent],
+  imports: [CommonModule, TreeViewComponent, FamilyHeaderActionsComponent],
   template: `
     <div class="pub-layout">
       <header class="pub-header">
@@ -23,6 +24,14 @@ import { environment } from '../../../../environments/environment';
             <span class="pub-sub">{{ members().length }} thành viên</span>
           </div>
         }
+
+        <!-- Header actions — viewOnly=true: chỉ hiện view-toggle + export -->
+        <app-family-header-actions
+          [(viewMode)]="viewMode"
+          [family]="family()"
+          [viewOnly]="true"
+        />
+
         <span class="pub-badge">Chỉ xem · Không cần đăng nhập</span>
       </header>
 
@@ -39,12 +48,88 @@ import { environment } from '../../../../environments/environment';
           </div>
         }
         @if (!loading() && !error() && members().length > 0) {
-          <app-tree-view
-            [members]="members()"
-            [relations]="relations()"
-            [viewOnly]="true"
-            (memberClicked)="onMemberClicked($event)"
-          />
+          <!-- Tree view -->
+          @if (viewMode() === 'tree') {
+            <app-tree-view
+              [members]="members()"
+              [relations]="relations()"
+              [viewOnly]="true"
+              (memberClicked)="onMemberClicked($event)"
+            />
+          }
+
+          <!-- Generation view -->
+          @if (viewMode() === 'generation') {
+            <div class="pub-list-view">
+              @for (group of byGeneration(); track group.generation) {
+                <div class="pub-gen-row">
+                  <div class="pub-gen-lbl">Đời {{ group.generation }}</div>
+                  <div class="pub-gen-members">
+                    @for (m of group.members; track m.id) {
+                      <div class="pub-mc" (click)="onMemberClicked(m)">
+                        <div class="pub-mc-name">{{ m.fullName }}</div>
+                        <div class="pub-mc-meta">
+                          {{ m.gender === 'MALE' ? '♂' : '♀' }}
+                          @if (m.birthDate) {
+                            · {{ birthYear(m) }}
+                          }
+                        </div>
+                        @if (m.chi || m.phai) {
+                          <div class="pub-mc-badges">
+                            @if (m.chi) {
+                              <span class="badge-chi">{{ m.chi.name }}</span>
+                            }
+                            @if (m.phai) {
+                              <span class="badge-phai">{{ m.phai.name }}</span>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Organization view -->
+          @if (viewMode() === 'organization') {
+            <div class="pub-list-view">
+              @for (chiGroup of byChiPhai(); track chiGroup.chiName) {
+                <div class="pub-chi-section">
+                  <h3 class="pub-chi-heading">
+                    🌿 {{ chiGroup.chiName }}
+                    <span class="pub-cnt"
+                      >{{ chiGroup.members.length }} người</span
+                    >
+                  </h3>
+                  <div class="pub-member-grid">
+                    @for (m of chiGroup.members; track m.id) {
+                      <div class="pub-mc" (click)="onMemberClicked(m)">
+                        <div class="pub-mc-name">{{ m.fullName }}</div>
+                        <div class="pub-mc-meta">
+                          Đời {{ m.generation }}
+                          @if (m.birthDate) {
+                            · {{ birthYear(m) }}
+                          }
+                        </div>
+                        @if (m.phai) {
+                          <div class="pub-mc-badges">
+                            <span class="badge-phai">{{ m.phai.name }}</span>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+              @if (byChiPhai().length === 0) {
+                <div class="pub-center" style="height:200px">
+                  Chưa phân chia chi phái
+                </div>
+              }
+            </div>
+          }
 
           @if (selectedMember()) {
             <div class="ro-wrap" (click)="selectedMember.set(null)">
@@ -109,12 +194,7 @@ import { environment } from '../../../../environments/environment';
                         }}</span>
                       </div>
                     }
-                    @if (selectedMember()!.burialPlace) {
-                      <div class="ro-row">
-                        <span class="ro-lbl">Quê quán</span
-                        ><span>{{ selectedMember()!.burialPlace }}</span>
-                      </div>
-                    }
+
                     @if (selectedMember()!.burialPlace) {
                       <div class="ro-row">
                         <span class="ro-lbl">Mộ phần</span
@@ -248,6 +328,7 @@ import { environment } from '../../../../environments/environment';
         border: 1px solid #166534;
         padding: 3px 10px;
         border-radius: 12px;
+        white-space: nowrap;
       }
       .pub-body {
         flex: 1;
@@ -466,6 +547,105 @@ import { environment } from '../../../../environments/environment';
         text-align: center;
         padding: 24px 0;
       }
+      /* Generation / Org views */
+      .pub-list-view {
+        position: absolute;
+        inset: 0;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .pub-gen-row {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+      }
+      .pub-gen-lbl {
+        width: 52px;
+        flex-shrink: 0;
+        font-size: 11px;
+        color: #475569;
+        text-align: right;
+        padding-top: 8px;
+        font-weight: 600;
+      }
+      .pub-gen-members {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        flex: 1;
+      }
+      .pub-chi-section {
+        border: 1px solid #1e3a6e33;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .pub-chi-heading {
+        margin: 0;
+        padding: 10px 14px;
+        background: #0f1e38;
+        font-size: 13px;
+        color: #60a5fa;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .pub-cnt {
+        font-size: 10px;
+        color: #475569;
+        margin-left: auto;
+      }
+      .pub-member-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px 14px;
+      }
+      .pub-mc {
+        background: #0c1828;
+        border: 1px solid #1e293b;
+        border-radius: 7px;
+        padding: 8px 12px;
+        cursor: pointer;
+        min-width: 130px;
+        max-width: 190px;
+        transition: border-color 0.15s;
+      }
+      .pub-mc:hover {
+        border-color: #3b82f6;
+      }
+      .pub-mc-name {
+        font-size: 12px;
+        color: #e2e8f0;
+        font-weight: 500;
+      }
+      .pub-mc-meta {
+        font-size: 10px;
+        color: #64748b;
+        margin-top: 2px;
+      }
+      .pub-mc-badges {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+        flex-wrap: wrap;
+      }
+      .badge-chi {
+        font-size: 9px;
+        background: #0f2d0f;
+        color: #4ade80;
+        padding: 1px 6px;
+        border-radius: 8px;
+      }
+      .badge-phai {
+        font-size: 9px;
+        background: #1a0f2e;
+        color: #c084fc;
+        padding: 1px 6px;
+        border-radius: 8px;
+      }
     `,
   ],
 })
@@ -478,6 +658,7 @@ export class PublicTreePage implements OnInit {
   relations = signal<Relationship[]>([]);
   loading = signal(true);
   error = signal('');
+  viewMode = signal<'tree' | 'generation' | 'organization'>('tree');
 
   selectedMember = signal<Member | null>(null);
   roTab = signal<'info' | 'rel'>('info');
@@ -520,6 +701,33 @@ export class PublicTreePage implements OnInit {
 
   roChiName = computed(() => (this.selectedMember() as any)?.chi?.name ?? '');
   roPhaiName = computed(() => (this.selectedMember() as any)?.phai?.name ?? '');
+
+  byGeneration = computed(() => {
+    const map = new Map<number, Member[]>();
+    for (const m of this.members()) {
+      if (!map.has(m.generation)) map.set(m.generation, []);
+      map.get(m.generation)!.push(m);
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([generation, members]) => ({ generation, members }));
+  });
+
+  byChiPhai = computed(() => {
+    const map = new Map<string, { chiName: string; members: Member[] }>();
+    for (const m of this.members()) {
+      const chiName: string = (m as any).chi?.name ?? 'Chưa phân chi';
+      if (!map.has(chiName)) map.set(chiName, { chiName, members: [] });
+      map.get(chiName)!.members.push(m);
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.chiName.localeCompare(b.chiName, 'vi'),
+    );
+  });
+
+  birthYear(m: Member): string {
+    return m.birthDate ? String(new Date(m.birthDate).getFullYear()) : '';
+  }
 
   fmtDate(d: string | Date): string {
     const dt = new Date(d);
