@@ -1,12 +1,12 @@
 {
   "version": 2,
-  "outputDirectory": "dist/apps/frontend/browser",
+  "outputDirectory": "dist/apps/frontend",
   "builds": [
     {
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist/apps/frontend/browser"
+        "distDir": "dist/apps/frontend"
       }
     },
     {
@@ -17,6 +17,6 @@
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "apps/api/api/$1" },
-    { "src": "/(.*)", "dest": "/dist/apps/frontend/browser/index.html" }
+    { "src": "/(.*)", "dest": "/dist/apps/frontend/index.html" }
   ]
 }
