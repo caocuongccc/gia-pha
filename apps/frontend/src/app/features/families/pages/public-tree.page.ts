@@ -215,7 +215,7 @@ import { environment } from '../../../../environments/environment';
                     }
                     @if (selectedMember()!.biography) {
                       <div class="ro-row">
-                        <span class="ro-lbl">Tiểu sử</span
+                        <span class="ro-lbl">Ghi chú</span
                         ><span>{{ selectedMember()!.biography }}</span>
                       </div>
                     }
@@ -340,7 +340,8 @@ import { environment } from '../../../../environments/environment';
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        height: 100%;
+        position: absolute;
+        inset: 0;
         gap: 16px;
         color: #64748b;
       }
