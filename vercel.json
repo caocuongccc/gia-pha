@@ -12,6 +12,7 @@
     {
       "src": "apps/api/api/**/*.ts",
       "use": "@vercel/node"
+      
     }
   ],
   "routes": [
