@@ -10,7 +10,8 @@
     "prisma:reset": "prisma migrate reset --schema=apps/api/prisma/schema.prisma",
     "api:dev": "vercel dev --listen 3000",
     "fe:dev": "npx nx serve frontend",
-    "dev": "concurrently \"npm run api:dev\" \"npm run fe:dev\""
+    "dev": "concurrently \"npm run api:dev\" \"npm run fe:dev\"",
+    "vercel-build": "prisma generate --schema=apps/api/prisma/schema.prisma && npx nx build frontend --configuration=production"
   },
   "private": true,
   "devDependencies": {

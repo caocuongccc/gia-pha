@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "apps/frontend/package.json",
+      "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
         "distDir": "dist/apps/frontend/browser"
@@ -14,17 +14,7 @@
     }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "apps/api/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "apps/frontend/dist/apps/frontend/browser/index.html"
-    },
-    { "src": "/api/drive/(.*)", 
-      "dest": "apps/api/api/drive/$1"
-    }
-
+    { "src": "/api/(.*)", "dest": "apps/api/api/$1" },
+    { "src": "/(.*)", "dest": "/dist/apps/frontend/browser/index.html" }
   ]
 }
