@@ -1,89 +1,118 @@
+// apps/api/api/index.ts — single catch-all, static imports cho Vercel bundler
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { setCorsHeaders, handleOptions } from '../src/_lib/cors';
 
-function injectParams(req: VercelRequest, segments: string[]) {
-  const params: any = {};
+// ── Static imports — Vercel cần biết lúc build ───────────────────────────────
+import familiesHandler from './families/index';
+import familiesIdHandler from './families/[id]';
+import familiesTreeHandler from './families/[id]/tree';
+import membersHandler from './members/index';
+import membersIdHandler from './members/[id]';
+import relationsHandler from './relations/index';
+import relationsIdHandler from './relations/[id]';
+import invitesHandler from './invites/index';
+import invitesAcceptHandler from './invites/accept';
+import chiHandler from './chi/index';
+import chiIdHandler from './chi/[id]';
+import phaiHandler from './phai/index';
+import phaiIdHandler from './phai/[id]';
+import publicFamiliesHandler from './public/families/[id]';
 
-  const idIndex = segments.findIndex(
-    (s) =>
-      s === 'families' ||
-      s === 'members' ||
-      s === 'relations' ||
-      s === 'chi' ||
-      s === 'phai',
-  );
-
-  if (idIndex >= 0 && segments[idIndex + 1]) {
-    params.id = segments[idIndex + 1];
-  }
-
-  if (segments[idIndex + 2]) {
-    params.action = segments[idIndex + 2];
-  }
-
-  req.query = {
-    ...req.query,
-    ...params,
-  };
+// ── Helper inject :id vào req.query ──────────────────────────────────────────
+function injectId(req: VercelRequest, id: string) {
+  req.query = { ...req.query, id };
 }
 
-async function tryImport(path: string) {
-  try {
-    return await import(path);
-  } catch {
-    return null;
-  }
-}
-
+// ── Main handler ─────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
   if (handleOptions(req, res)) return;
 
   const url = req.url ?? '';
   const path = url.replace(/\?.*$/, '');
-  const segments = path.split('/').filter(Boolean);
+  const seg = path.split('/').filter(Boolean); // ['api','families','uuid','tree']
 
+  // /api/health
   if (path === '/api/health') {
     return res.json({ ok: true, time: new Date() });
   }
 
-  if (segments[0] !== 'api') {
-    return res.status(404).json({ error: 'Invalid API path' });
+  // /api/public/families/:id  (+ /members, /relations sub-paths)
+  if (seg[1] === 'public' && seg[2] === 'families') {
+    if (seg[3]) injectId(req, seg[3]);
+    return publicFamiliesHandler(req, res);
   }
 
-  const apiSegments = segments.slice(1);
-
-  injectParams(req, apiSegments);
-
-  // 1️⃣ try exact route
-  let modulePath = './' + apiSegments.join('/');
-
-  let mod = await tryImport(modulePath);
-
-  // 2️⃣ try dynamic [id]
-  if (!mod && apiSegments.length >= 2) {
-    const dynamicSegments = [...apiSegments];
-    dynamicSegments[1] = '[id]';
-
-    modulePath = './' + dynamicSegments.join('/');
-    mod = await tryImport(modulePath);
+  // /api/families/:id/tree
+  if (seg[1] === 'families' && seg[3] === 'tree') {
+    injectId(req, seg[2]);
+    return familiesTreeHandler(req, res);
   }
 
-  // 3️⃣ try nested dynamic
-  if (!mod && apiSegments.length >= 3) {
-    const dynamicSegments = [...apiSegments];
-    dynamicSegments[1] = '[id]';
-
-    modulePath = './' + dynamicSegments.slice(0, 2).join('/');
-    mod = await tryImport(modulePath);
+  // /api/families/:id
+  if (seg[1] === 'families' && seg[2]) {
+    injectId(req, seg[2]);
+    return familiesIdHandler(req, res);
   }
 
-  if (mod?.default) {
-    return mod.default(req, res);
+  // /api/families
+  if (seg[1] === 'families') {
+    return familiesHandler(req, res);
   }
 
-  return res.status(404).json({
-    error: 'Route not found',
-    path,
-  });
+  // /api/members/:id
+  if (seg[1] === 'members' && seg[2]) {
+    injectId(req, seg[2]);
+    return membersIdHandler(req, res);
+  }
+
+  // /api/members
+  if (seg[1] === 'members') {
+    return membersHandler(req, res);
+  }
+
+  // /api/relations/:id
+  if (seg[1] === 'relations' && seg[2]) {
+    injectId(req, seg[2]);
+    return relationsIdHandler(req, res);
+  }
+
+  // /api/relations
+  if (seg[1] === 'relations') {
+    return relationsHandler(req, res);
+  }
+
+  // /api/invites/accept  — specific trước generic
+  if (seg[1] === 'invites' && seg[2] === 'accept') {
+    return invitesAcceptHandler(req, res);
+  }
+
+  // /api/invites
+  if (seg[1] === 'invites') {
+    return invitesHandler(req, res);
+  }
+
+  // /api/chi/:id
+  if (seg[1] === 'chi' && seg[2]) {
+    injectId(req, seg[2]);
+    return chiIdHandler(req, res);
+  }
+
+  // /api/chi
+  if (seg[1] === 'chi') {
+    return chiHandler(req, res);
+  }
+
+  // /api/phai/:id
+  if (seg[1] === 'phai' && seg[2]) {
+    injectId(req, seg[2]);
+    return phaiIdHandler(req, res);
+  }
+
+  // /api/phai
+  if (seg[1] === 'phai') {
+    return phaiHandler(req, res);
+  }
+
+  return res.status(404).json({ error: 'Route not found', path });
 }
