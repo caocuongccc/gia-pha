@@ -1,4 +1,4 @@
-import { VercelResponse } from '@vercel/node';
+import { VercelRequest, VercelResponse } from '@vercel/node';
 
 export function setCorsHeaders(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', process.env.FRONTEND_URL || '*');
@@ -9,7 +9,12 @@ export function setCorsHeaders(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
-export function handleOptions(req: unknown, res: VercelResponse) {
-  setCorsHeaders(res);
-  res.status(204).end();
+export function handleOptions(req: VercelRequest, res: VercelResponse) {
+  if (req.method === 'OPTIONS') {
+    setCorsHeaders(res);
+    res.status(204).end();
+    return true;
+  }
+
+  return false;
 }
