@@ -9,7 +9,7 @@ export function setCorsHeaders(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
-export function handleOptions(res: VercelResponse) {
+export function handleOptions(req: unknown, res: VercelResponse) {
   setCorsHeaders(res);
   res.status(204).end();
 }
