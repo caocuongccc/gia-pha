@@ -55,7 +55,13 @@
       "executor": "@angular-devkit/build-angular:dev-server",
       "configurations": {
         "production": {
-          "buildTarget": "frontend:build:production"
+          "buildTarget": "frontend:build:production",
+          "fileReplacements": [
+            {
+              "replace": "apps/frontend/src/environments/environment.ts",
+              "with": "apps/frontend/src/environments/environment.prod.ts"
+            }
+    ]
         },
         "development": {
           "buildTarget": "frontend:build:development"
