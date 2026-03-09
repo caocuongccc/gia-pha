@@ -6,6 +6,8 @@ import { setCorsHeaders, handleOptions } from '../src/_lib/cors';
 import familiesHandler from './families/index';
 import familiesIdHandler from './families/[id]';
 import familiesTreeHandler from './families/[id]/tree';
+import familiesJoinHandler from './families/[id]/join';
+import familiesMyRoleHandler from './families/[id]/my-role';
 import membersHandler from './members/index';
 import membersIdHandler from './members/[id]';
 import relationsHandler from './relations/index';
@@ -40,6 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // /api/public/families/:id  (+ /members, /relations sub-paths)
   if (seg[1] === 'public' && seg[2] === 'families') {
     if (seg[3]) injectId(req, seg[3]);
+    if (seg[4]) req.query = { ...req.query, action: seg[4] }; // members | relations
     return publicFamiliesHandler(req, res);
   }
 
@@ -47,6 +50,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (seg[1] === 'families' && seg[3] === 'tree') {
     injectId(req, seg[2]);
     return familiesTreeHandler(req, res);
+  }
+
+  // /api/families/:id/join
+  if (seg[1] === 'families' && seg[3] === 'join') {
+    injectId(req, seg[2]);
+    return familiesJoinHandler(req, res);
+  }
+
+  // /api/families/:id/my-role
+  if (seg[1] === 'families' && seg[3] === 'my-role') {
+    injectId(req, seg[2]);
+    return familiesMyRoleHandler(req, res);
   }
 
   // /api/families/:id

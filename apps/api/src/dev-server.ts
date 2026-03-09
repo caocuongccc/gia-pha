@@ -53,6 +53,12 @@ async function startServer() {
   const { default: familiesTree } = await import(
     '../api/families/[id]/tree.js'
   );
+  const { default: familiesJoin } = await import(
+    '../api/families/[id]/join.js'
+  );
+  const { default: familiesMyRole } = await import(
+    '../api/families/[id]/my-role.js'
+  );
   const { default: families } = await import('../api/families/index.js');
   const { default: members } = await import('../api/members/index.js');
   const { default: membersId } = await import('../api/members/[id].js');
@@ -68,37 +74,45 @@ async function startServer() {
     '../api/public/families/[id].js'
   );
 
-  // Helper: inject :id vào req.query để các handler dùng req.query.id
+  // Helper: inject :id vào req.query
   const injectId = (handler: any) => (req: any, res: any) => {
     req.query = { ...req.query, id: req.params.id };
     return handler(req, res);
   };
 
   // ── Routes: specific trước, generic sau ──────────────────────
-  // public (no auth) — specific sub-routes TRƯỚC route generic :id
-  app.all('/api/public/families/:id/members', injectId(publicFamiliesId));
-  app.all('/api/public/families/:id/relations', injectId(publicFamiliesId));
-  app.all('/api/public/families/:id', injectId(publicFamiliesId));
+
+  // public — không cần auth, inject action cho sub-path
+  app.get('/api/public/families/:id/members', (req, res) => {
+    req.query = { ...req.query, id: req.params.id, action: 'members' };
+    return publicFamiliesId(req as any, res as any);
+  });
+  app.get('/api/public/families/:id/relations', (req, res) => {
+    req.query = { ...req.query, id: req.params.id, action: 'relations' };
+    return publicFamiliesId(req as any, res as any);
+  });
+  app.get('/api/public/families/:id', injectId(publicFamiliesId));
 
   // families
   app.all('/api/families/:id/tree', (req, res) =>
     familiesTree(req as any, res as any),
   );
+  app.all('/api/families/:id/join', injectId(familiesJoin));
+  app.all('/api/families/:id/my-role', injectId(familiesMyRole));
   app.all('/api/families/:id', injectId(familiesId));
   app.all('/api/families', (req, res) => families(req as any, res as any));
 
-  // members — members/[id].ts dùng req.query.id nên cần inject
+  // members
   app.all('/api/members/:id', injectId(membersId));
   app.all('/api/members', (req, res) => members(req as any, res as any));
 
-  // relations — [id].ts dùng URL parsing, không cần inject; nhưng inject cũng không hại
+  // relations
   app.all('/api/relations/:id', injectId(relationsId));
   app.all('/api/relations', (req, res) => relations(req as any, res as any));
 
-  // chi/phai — [id].ts dùng URL parsing
+  // chi/phai
   app.all('/api/chi/:id', injectId(chiId));
   app.all('/api/chi', (req, res) => chiIndex(req as any, res as any));
-
   app.all('/api/phai/:id', injectId(phaiId));
   app.all('/api/phai', (req, res) => phaiIndex(req as any, res as any));
 

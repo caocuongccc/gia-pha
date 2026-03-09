@@ -1,47 +1,69 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
+// apps/api/api/families/index.ts
+// GET  /api/families  — danh sách gia phả (mọi user đăng nhập đều xem được)
+// POST /api/families  — tạo gia phả mới (chỉ ADMIN)
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { prisma } from '../../src/_lib/prisma';
 import { requireAuth } from '../../src/_lib/auth';
 import { setCorsHeaders, handleOptions } from '../../src/_lib/cors';
+
+const ADMIN_EMAILS = ['caocuongccc@gmail.com']; // ← đổi email thực
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return handleOptions(req, res);
 
   const user = await requireAuth(req, res);
-  if (!user) return; // 401 đã được gửi bởi requireAuth
+  if (!user) return;
 
-  // ── GET: Lấy danh sách gia phả user có quyền truy cập ──
+  // ── GET /api/families ────────────────────────────────────────
   if (req.method === 'GET') {
+    // Lấy tất cả gia phả
     const families = await prisma.family.findMany({
-      where: {
-        OR: [
-          { ownerId: user.id },
-          { accessList: { some: { userId: user.id } } },
-        ],
-      },
-      include: { _count: { select: { members: true } } },
       orderBy: { createdAt: 'desc' },
+      include: { _count: { select: { members: true } } },
     });
+
+    // Auto-join VIEWER nếu user chưa là thành viên của gia phả nào
+    const isAdmin = ADMIN_EMAILS.includes(user.email ?? '');
+    if (!isAdmin) {
+      for (const family of families) {
+        const existing = await prisma.familyMember.findFirst({
+          where: { familyId: family.id, userId: user.id },
+        });
+        if (!existing) {
+          await prisma.familyMember.create({
+            data: { familyId: family.id, userId: user.id, role: 'VIEWER' },
+          });
+        }
+      }
+    }
+
     return res.json({ data: families });
   }
 
-  // ── POST: Tạo gia phả mới ──
+  // ── POST /api/families ───────────────────────────────────────
+  // Chỉ admin mới tạo được gia phả
   if (req.method === 'POST') {
-    const { name, description, isPublic = false } = req.body;
-    if (!name) return res.status(400).json({ error: 'name is required' });
+    const isAdmin = ADMIN_EMAILS.includes(user.email ?? '');
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Chỉ admin mới được tạo gia phả' });
+    }
 
-    // Transaction: tạo family + gắn owner vào FamilyMember cùng lúc
-    const family = await prisma.$transaction(async (tx) => {
-      const f = await tx.family.create({
-        data: { name, description, isPublic, ownerId: user.id },
-      });
-      await tx.familyMember.create({
-        data: { familyId: f.id, userId: user.id, role: 'OWNER' },
-      });
-      return f;
+    const { name, description } = req.body ?? {};
+    if (!name) return res.status(400).json({ error: 'Thiếu tên gia phả' });
+
+    const family = await prisma.family.create({
+      data: {
+        name,
+        description,
+        members: {
+          create: { userId: user.id, role: 'OWNER' },
+        },
+      },
     });
+
     return res.status(201).json({ data: family });
   }
 
-  res.status(405).json({ error: 'Method not allowed' });
+  return res.status(405).json({ error: 'Method Not Allowed' });
 }

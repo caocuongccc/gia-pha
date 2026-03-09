@@ -16,13 +16,14 @@ import { ChiPhaiService } from '../../../core/services/chi-phai.service';
 import { TreeViewComponent } from '../../tree-view/tree-view.component';
 import { MemberFormComponent } from '../../member-form/member-form.component';
 import { RelationFormComponent } from '../../member-form/relation-form.component';
-import { ExportButtonsComponent } from '../../tree-view/export-buttons.component';
 import { ManageChiPhaiComponent } from '../../settings/manage-chi-phai.component';
 import {
   FamilyHeaderActionsComponent,
   type ViewMode,
 } from '../components/family-header-actions.component';
 import type { Member } from '@gia-pha/shared-types';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../../environments/environment';
 
 type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
 
@@ -34,7 +35,6 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
     TreeViewComponent,
     MemberFormComponent,
     RelationFormComponent,
-    ExportButtonsComponent,
     ManageChiPhaiComponent,
     FamilyHeaderActionsComponent,
   ],
@@ -51,6 +51,9 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
             {{ chiPhaiSvc.chiList().length }} chi ·
             {{ chiPhaiSvc.allPhai().length }} phái
           </span>
+          @if (isViewOnly()) {
+            <span class="viewer-badge">👁 Chỉ xem</span>
+          }
         </div>
 
         <app-family-header-actions
@@ -58,6 +61,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
           [family]="familySvc.selectedFamily()"
           [shareUrl]="shareUrl()"
           [copied]="copied()"
+          [viewOnly]="isViewOnly()"
           (chiPhaiClicked)="togglePanel('chiPhai')"
           (togglePublicClicked)="togglePublic()"
           (copyLinkClicked)="copyShareUrl()"
@@ -133,9 +137,11 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
                           class="mc-actions"
                           (click)="$event.stopPropagation()"
                         >
-                          <button (click)="openEditMember(m)" title="Sửa">
-                            ✏️
-                          </button>
+                          @if (!isViewOnly()) {
+                            <button (click)="openEditMember(m)" title="Sửa">
+                              ✏️
+                            </button>
+                          }
                           <button (click)="openRelations(m)" title="Quan hệ">
                             🔗
                           </button>
@@ -198,9 +204,11 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
                               class="mc-actions"
                               (click)="$event.stopPropagation()"
                             >
-                              <button (click)="openEditMember(m)" title="Sửa">
-                                ✏️
-                              </button>
+                              @if (!isViewOnly()) {
+                                <button (click)="openEditMember(m)" title="Sửa">
+                                  ✏️
+                                </button>
+                              }
                               <button
                                 (click)="openRelations(m)"
                                 title="Quan hệ"
@@ -252,7 +260,8 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
                   Thêm thành viên
                 }
                 @if (activePanel() === 'editMember') {
-                  Sửa · {{ memberSvc.selectedMember()?.fullName }}
+                  {{ isViewOnly() ? 'Thông tin' : 'Sửa' }} ·
+                  {{ memberSvc.selectedMember()?.fullName }}
                 }
                 @if (activePanel() === 'relations') {
                   Quan hệ · {{ memberSvc.selectedMember()?.fullName }}
@@ -282,34 +291,152 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
               <button class="btn-close" (click)="closePanel()">✕</button>
             </div>
             <div class="panel-body">
-              @if (activePanel() === 'addMember') {
+              @if (activePanel() === 'addMember' && !isViewOnly()) {
                 <app-member-form
                   [familyId]="familyId"
                   (submitted)="onMemberSaved()"
                   (cancelled)="closePanel()"
                 />
               }
+
               @if (
                 activePanel() === 'editMember' && memberSvc.selectedMember()
               ) {
-                <app-member-form
-                  [familyId]="familyId"
-                  [editMember]="memberSvc.selectedMember()"
-                  (submitted)="onMemberSaved()"
-                  (cancelled)="closePanel()"
-                />
+                @if (isViewOnly()) {
+                  <!-- VIEWER: read-only info panel -->
+                  <div class="ro-info">
+                    @let m = memberSvc.selectedMember()!;
+                    @if (m.birthDate) {
+                      <div class="ro-row">
+                        <span class="ro-lbl">Ngày sinh</span
+                        ><span>{{ fmtDate(m.birthDate) }}</span>
+                      </div>
+                    }
+                    @if (m.deathDate) {
+                      <div class="ro-row">
+                        <span class="ro-lbl">Ngày mất</span
+                        ><span>{{ fmtDate(m.deathDate) }}</span>
+                      </div>
+                    }
+                    <!-- @if (m.birthPlace) {
+                      <div class="ro-row">
+                        <span class="ro-lbl">Quê quán</span
+                        ><span>{{ m.birthPlace }}</span>
+                      </div>
+                    } -->
+                    @if (m.burialPlace) {
+                      <div class="ro-row">
+                        <span class="ro-lbl">Mộ phần</span
+                        ><span>{{ m.burialPlace }}</span>
+                      </div>
+                    }
+                    @if (m.alias) {
+                      <div class="ro-row">
+                        <span class="ro-lbl">Tên khác</span
+                        ><span>{{ m.alias }}</span>
+                      </div>
+                    }
+                    @if (m.biography) {
+                      <div class="ro-row ro-bio">
+                        <span class="ro-lbl">Tiểu sử</span
+                        ><span>{{ m.biography }}</span>
+                      </div>
+                    }
+                    <div class="ro-hint">👁 Chỉ xem — không thể chỉnh sửa</div>
+                  </div>
+                } @else {
+                  <app-member-form
+                    [familyId]="familyId"
+                    [editMember]="memberSvc.selectedMember()"
+                    (submitted)="onMemberSaved()"
+                    (cancelled)="closePanel()"
+                  />
+                }
               }
+
               @if (
                 activePanel() === 'relations' && memberSvc.selectedMember()
               ) {
-                <app-relation-form
-                  [memberId]="memberSvc.selectedMember()!.id"
-                  [familyId]="familyId"
-                  (changed)="onRelationChanged()"
-                />
+                @if (isViewOnly()) {
+                  <!-- VIEWER: read-only relations -->
+                  <div class="ro-info">
+                    @let rels = getRelations(memberSvc.selectedMember()!.id);
+                    @if (rels.parents.length > 0) {
+                      <div class="ro-rg">
+                        <div class="ro-rl">Cha / Mẹ</div>
+                        @for (m of rels.parents; track m.id) {
+                          <div class="ro-rrow" (click)="onMemberClicked(m)">
+                            <span
+                              class="ro-dot"
+                              [class.male]="m.gender === 'MALE'"
+                              [class.female]="m.gender !== 'MALE'"
+                            ></span>
+                            <span>{{ memberSvc.displayName(m) }}</span>
+                            <span class="ro-gen">Đời {{ m.generation }}</span>
+                          </div>
+                        }
+                      </div>
+                    }
+                    @if (rels.spouses.length > 0) {
+                      <div class="ro-rg">
+                        <div class="ro-rl">Vợ / Chồng</div>
+                        @for (m of rels.spouses; track m.id) {
+                          <div class="ro-rrow" (click)="onMemberClicked(m)">
+                            <span class="ro-dot spouse"></span>
+                            <span>{{ memberSvc.displayName(m) }}</span>
+                            <span class="ro-gen">Đời {{ m.generation }}</span>
+                          </div>
+                        }
+                      </div>
+                    }
+                    @if (rels.children.length > 0) {
+                      <div class="ro-rg">
+                        <div class="ro-rl">
+                          Con cái ({{ rels.children.length }})
+                        </div>
+                        @for (m of rels.children; track m.id) {
+                          <div class="ro-rrow" (click)="onMemberClicked(m)">
+                            <span
+                              class="ro-dot"
+                              [class.male]="m.gender === 'MALE'"
+                              [class.female]="m.gender !== 'MALE'"
+                            ></span>
+                            <span>{{ memberSvc.displayName(m) }}</span>
+                            <span class="ro-gen">Đời {{ m.generation }}</span>
+                          </div>
+                        }
+                      </div>
+                    }
+                    @if (
+                      rels.parents.length === 0 &&
+                      rels.spouses.length === 0 &&
+                      rels.children.length === 0
+                    ) {
+                      <div
+                        style="color:#475569;font-size:12px;text-align:center;padding:24px 0"
+                      >
+                        Chưa có quan hệ nào
+                      </div>
+                    }
+                  </div>
+                } @else {
+                  <app-relation-form
+                    [memberId]="memberSvc.selectedMember()!.id"
+                    [familyId]="familyId"
+                    (changed)="onRelationChanged()"
+                  />
+                }
               }
-              @if (activePanel() === 'chiPhai') {
+
+              @if (activePanel() === 'chiPhai' && !isViewOnly()) {
                 <app-manage-chi-phai [familyId]="familyId" />
+              }
+              @if (isViewOnly() && activePanel() === 'chiPhai') {
+                <div
+                  style="padding:24px;color:#64748b;font-size:13px;text-align:center"
+                >
+                  🔒 Bạn không có quyền chỉnh sửa chi phái
+                </div>
               }
             </div>
           </aside>
@@ -345,6 +472,93 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
       .meta {
         font-size: 11px;
         color: #475569;
+      }
+      .viewer-badge {
+        display: inline-block;
+        font-size: 10px;
+        color: #f59e0b;
+        background: #1a1200;
+        border: 1px solid #78350f;
+        padding: 2px 8px;
+        border-radius: 10px;
+        margin-top: 3px;
+      }
+      .ro-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .ro-row {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 7px 0;
+        border-bottom: 1px solid #0f1828;
+        font-size: 12px;
+        color: #94a3b8;
+      }
+      .ro-bio {
+        align-items: flex-start;
+      }
+      .ro-lbl {
+        font-size: 10px;
+        color: #475569;
+        width: 64px;
+        flex-shrink: 0;
+        padding-top: 1px;
+      }
+      .ro-hint {
+        margin-top: 16px;
+        font-size: 10px;
+        color: #334155;
+        text-align: center;
+        padding: 6px;
+        background: #0a0f1a;
+        border-radius: 6px;
+      }
+      .ro-rg {
+        margin-bottom: 14px;
+      }
+      .ro-rl {
+        font-size: 10px;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 6px;
+      }
+      .ro-rrow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        color: #94a3b8;
+        transition: background 0.15s;
+      }
+      .ro-rrow:hover {
+        background: #0f1828;
+      }
+      .ro-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .ro-dot.male {
+        background: #3b82f6;
+      }
+      .ro-dot.female {
+        background: #a855f7;
+      }
+      .ro-dot.spouse {
+        background: #f59e0b;
+      }
+      .ro-gen {
+        font-size: 10px;
+        color: #334155;
+        margin-left: auto;
       }
       .header-actions {
         display: flex;
@@ -624,11 +838,16 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   chiPhaiSvc = inject(ChiPhaiService);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private http = inject(HttpClient);
 
   familyId = '';
   viewMode = signal<ViewMode>('tree');
   activePanel = signal<SidePanel>('none');
   copied = signal(false);
+  userRole = signal<'OWNER' | 'EDITOR' | 'VIEWER' | null>(null);
+
+  // VIEWER không được thêm/sửa/xoá
+  isViewOnly = computed(() => this.userRole() === 'VIEWER');
 
   // FIX 1: route đúng là /share/:token (không phải /public/:id)
   shareUrl = computed(() => {
@@ -674,7 +893,19 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
       this.memberSvc.loadByFamily(this.familyId),
       this.relationSvc.loadByFamily(this.familyId),
       this.chiPhaiSvc.load(this.familyId),
+      this.loadMyRole(),
     ]);
+  }
+
+  private async loadMyRole() {
+    try {
+      const res: any = await this.http
+        .get(`${environment.apiUrl}/api/families/${this.familyId}/my-role`)
+        .toPromise();
+      this.userRole.set(res?.data?.role ?? 'VIEWER');
+    } catch {
+      this.userRole.set('VIEWER');
+    }
   }
 
   ngOnDestroy() {
@@ -710,7 +941,10 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
 
   onMemberClicked(member: Member) {
     this.memberSvc.select(member);
-    if (this.activePanel() !== 'relations') {
+    if (this.isViewOnly()) {
+      // VIEWER: mở tab thông tin (editMember hiển thị read-only)
+      this.activePanel.set('editMember');
+    } else if (this.activePanel() !== 'relations') {
       this.activePanel.set('editMember');
     }
   }
@@ -726,6 +960,37 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
 
   async onRelationChanged() {
     await this.relationSvc.loadByFamily(this.familyId);
+  }
+
+  fmtDate(d: string | Date): string {
+    const dt = new Date(d);
+    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+  }
+
+  getRelations(memberId: string) {
+    const map = new Map(this.memberSvc.members().map((m) => [m.id, m]));
+    const rels = this.relationSvc.relations();
+    const parents = rels
+      .filter((r) => (r as any).type === 'PARENT' && r.toMemberId === memberId)
+      .map((r) => map.get(r.fromMemberId))
+      .filter(Boolean) as Member[];
+    const children = rels
+      .filter(
+        (r) => (r as any).type === 'PARENT' && r.fromMemberId === memberId,
+      )
+      .map((r) => map.get(r.toMemberId))
+      .filter(Boolean) as Member[];
+    const spouses = rels
+      .filter(
+        (r) =>
+          (r as any).type === 'SPOUSE' &&
+          (r.fromMemberId === memberId || r.toMemberId === memberId),
+      )
+      .map((r) =>
+        map.get(r.fromMemberId === memberId ? r.toMemberId : r.fromMemberId),
+      )
+      .filter(Boolean) as Member[];
+    return { parents, children, spouses };
   }
 
   goBack() {
