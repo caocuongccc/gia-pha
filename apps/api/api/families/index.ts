@@ -5,7 +5,7 @@ import { setCorsHeaders, handleOptions } from '../../src/_lib/cors';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
-  if (req.method === 'OPTIONS') return handleOptions(res);
+  if (req.method === 'OPTIONS') return handleOptions(req, res);
 
   const user = await requireAuth(req, res);
   if (!user) return; // 401 đã được gửi bởi requireAuth

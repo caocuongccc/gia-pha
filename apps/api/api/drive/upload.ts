@@ -10,7 +10,7 @@ export const config = { api: { bodyParser: false } };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
-  if (req.method === 'OPTIONS') return handleOptions(res);
+  if (req.method === 'OPTIONS') return handleOptions(req, res);
   if (req.method !== 'POST') return res.status(405).end();
 
   const user = await requireAuth(req, res);

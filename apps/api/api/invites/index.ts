@@ -7,7 +7,7 @@ import { sendInviteEmail } from '../../src/_lib/email';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
-  if (req.method === 'OPTIONS') return handleOptions(res);
+  if (req.method === 'OPTIONS') return handleOptions(req, res);
 
   const user = await requireAuth(req, res);
   if (!user) return;

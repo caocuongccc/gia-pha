@@ -9,7 +9,7 @@ import { setCorsHeaders, handleOptions } from '../../src/_lib/cors';
 
 export async function chiIndexHandler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
-  if (req.method === 'OPTIONS') return handleOptions(res);
+  if (req.method === 'OPTIONS') return handleOptions(req, res);
   const user = await requireAuth(req, res);
   if (!user) return;
 

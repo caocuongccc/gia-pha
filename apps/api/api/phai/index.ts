@@ -12,7 +12,7 @@ export async function phaiIndexHandler(
   res: VercelResponse,
 ) {
   setCorsHeaders(res);
-  if (req.method === 'OPTIONS') return handleOptions(res);
+  if (req.method === 'OPTIONS') return handleOptions(req, res);
   const user = await requireAuth(req, res);
   if (!user) return;
 

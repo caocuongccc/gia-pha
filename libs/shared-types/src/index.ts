@@ -130,7 +130,7 @@ export interface CreateMemberDto {
   phaiId?: string | null;
 }
 
-export interface UpdateMemberDto extends Partial<CreateMemberDto> {}
+// export interface UpdateMemberDto extends Partial<CreateMemberDto> {}
 
 export interface CreateRelationshipDto {
   fromMemberId: string;

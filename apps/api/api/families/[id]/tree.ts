@@ -9,14 +9,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { prisma } from '../../../src/_lib/prisma';
 import { requireAuth } from '../../../src/_lib/auth';
 import { setCorsHeaders, handleOptions } from '../../../src/_lib/cors';
-import type {
-  Member,
-  FamilyTreeNode,
-} from '../../../../../libs/shared-types/src/index';
+import type { Member, FamilyTreeNode } from '@gia-pha/shared-types';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
-  if (req.method === 'OPTIONS') return handleOptions(res);
+  if (req.method === 'OPTIONS') return handleOptions(req, res);
 
   const user = await requireAuth(req, res);
   if (!user) return;
