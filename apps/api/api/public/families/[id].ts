@@ -1,5 +1,3 @@
-// apps/api/api/public/families/[id].ts  →  /api/public/families/:id
-// KHÔNG cần Bearer token — trả về gia phả nếu isPublic = true
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { PrismaClient } from '@prisma/client';
 
@@ -19,21 +17,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const id = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
 
+  const action = Array.isArray(req.query.action)
+    ? req.query.action[0]
+    : req.query.action;
+
   if (!id) {
     return res.status(400).json({ error: 'Missing family id' });
   }
-  const segment = req.url?.split('/').slice(-1)[0]; // members | relations | (empty)
 
   try {
-    // 1. Kiểm tra gia phả có isPublic = true không
     const family = await prisma.family.findUnique({ where: { id } });
+
     if (!family)
       return res.status(404).json({ error: 'Không tìm thấy gia phả' });
+
     if (!family.isPublic)
       return res.status(403).json({ error: 'Gia phả này không công khai' });
 
-    // 2. Trả về dữ liệu theo segment
-    if (segment === 'members') {
+    // /members
+    if (action === 'members') {
       const members = await prisma.member.findMany({
         where: { familyId: id },
         include: {
@@ -42,10 +44,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         orderBy: { generation: 'asc' },
       });
+
       return res.json({ data: members });
     }
 
-    if (segment === 'relations') {
+    // /relations
+    if (action === 'relations') {
       const relations = await prisma.relationship.findMany({
         where: {
           OR: [
@@ -54,10 +58,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ],
         },
       });
+
       return res.json({ data: relations });
     }
 
-    // Default: trả về thông tin family
     return res.json({ data: family });
   } catch (e) {
     console.error(e);
