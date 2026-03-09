@@ -19,6 +19,9 @@
       "src": "/api/(.*)",
       "dest": "apps/api/api/index.ts"
     },
+
+    { "handle": "filesystem" },
+
     {
       "src": "/(.*)",
       "dest": "/index.html"
