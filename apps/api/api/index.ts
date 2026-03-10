@@ -19,6 +19,10 @@ import chiIdHandler from './chi/[id]';
 import phaiHandler from './phai/index';
 import phaiIdHandler from './phai/[id]';
 import publicFamiliesHandler from './public/families/[id]';
+import scholarshipHandler from './scholarship/index';
+import scholarshipIdHandler from './scholarship/[id]';
+import fundHandler from './fund/index';
+import fundIdHandler from './fund/[id]';
 
 // ── Helper inject :id vào req.query ──────────────────────────────────────────
 function injectId(req: VercelRequest, id: string) {
@@ -127,6 +131,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // /api/phai
   if (seg[1] === 'phai') {
     return phaiHandler(req, res);
+  }
+
+  // /api/scholarship/:id
+  if (seg[1] === 'scholarship' && seg[2]) {
+    injectId(req, seg[2]);
+    return scholarshipIdHandler(req, res);
+  }
+
+  // /api/scholarship
+  if (seg[1] === 'scholarship') {
+    return scholarshipHandler(req, res);
+  }
+
+  // /api/fund/:id
+  if (seg[1] === 'fund' && seg[2]) {
+    injectId(req, seg[2]);
+    return fundIdHandler(req, res);
+  }
+
+  // /api/fund
+  if (seg[1] === 'fund') {
+    return fundHandler(req, res);
   }
 
   return res.status(404).json({ error: 'Route not found', path });

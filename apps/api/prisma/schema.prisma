@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL") // Cần cho migrate
+  directUrl = env("DIRECT_URL")
 }
 
 // ── Enums ──────────────────────────────
@@ -33,15 +33,17 @@ model Family {
   id          String   @id @default(uuid())
   name        String
   description String?
-  ownerId     String // Supabase auth.users.id
+  ownerId     String
   isPublic    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   members      Member[]
   accessList   FamilyMember[]
-  inviteTokens InviteToken[] // thêm dòng này
-  chiList      Chi[] // ← THÊM DÒNG NÀY
+  inviteTokens InviteToken[]
+  chiList      Chi[]
+  scholarships ScholarshipRecord[] @relation("FamilyScholarships")
+  fundRecords  FundRecord[]        @relation("FamilyFundRecords")
 
   @@map("families")
 }
@@ -57,17 +59,14 @@ model Member {
   generation Int       @default(1)
   biography  String?
 
-  // ── Từ DB người em ──────────────────
-  alias       String? // tên khác
-  childOrder  Int? // thứ tự con (1, 2, 3...)
+  alias       String?
+  childOrder  Int?
   burialPlace String?
-  isOutPerson Boolean @default(false) // người ngoại tộc (vợ/chồng lấy vào)
-  deathYearAm String? // năm mất âm lịch
+  birthPlace  String?
+  isOutPerson Boolean @default(false)
+  deathYearAm String?
+  coupleGroupId String?
 
-  // ── Đơn vị hiển thị trên cây ────────
-  coupleGroupId String? // ← THÊM: nhóm "ô gia đình" để vẽ cây
-
-  // ── Phân cấp tổ chức ────────────────
   chiId  String?
   phaiId String?
 
@@ -80,6 +79,8 @@ model Member {
 
   fromRelations Relationship[] @relation("FromMember")
   toRelations   Relationship[] @relation("ToMember")
+  scholarships  ScholarshipRecord[] @relation("MemberScholarships")
+  fundRecords   FundRecord[]        @relation("MemberFundRecords")
 
   @@map("members")
 }
@@ -103,7 +104,7 @@ model Relationship {
 model FamilyMember {
   id       String     @id @default(uuid())
   familyId String
-  userId   String // Supabase auth.users.id
+  userId   String
   role     FamilyRole @default(VIEWER)
   joinedAt DateTime   @default(now())
 
@@ -113,17 +114,15 @@ model FamilyMember {
   @@map("family_members")
 }
 
-// Thêm vào cuối schema.prisma
-
 model InviteToken {
   id        String     @id @default(uuid())
-  token     String     @unique @default(uuid()) // UUID làm token
+  token     String     @unique @default(uuid())
   familyId  String
-  invitedBy String // userId người mời
-  email     String // email người được mời
+  invitedBy String
+  email     String
   role      FamilyRole @default(VIEWER)
-  usedAt    DateTime? // null = chưa dùng
-  expiresAt DateTime // hết hạn sau 7 ngày
+  usedAt    DateTime?
+  expiresAt DateTime
   createdAt DateTime   @default(now())
 
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -164,4 +163,55 @@ model Phai {
 
   @@unique([chiId, name])
   @@map("phai")
+}
+
+// ── Khuyến học ──────────────────────────────────────────────────
+model ScholarshipRecord {
+  id        String  @id @default(uuid())
+  familyId  String
+  memberId  String? // liên kết với Member trong cây (optional)
+
+  studentName  String  // tên cháu
+  year         Int     // năm học
+  school       String? // trường
+  grade        String? // lớp / cấp
+  achievement  String  // "Học sinh Giỏi" | "Xuất sắc" | "Giải thi" | "Đỗ ĐH" | tự nhập
+  rewardAmount Int?    // số tiền thưởng (VNĐ), null = chưa xác định
+  awardedBy    String? // người duyệt/trao thưởng
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  family Family  @relation("FamilyScholarships", fields: [familyId], references: [id], onDelete: Cascade)
+  member Member? @relation("MemberScholarships", fields: [memberId], references: [id])
+
+  @@map("scholarship_records")
+}
+
+// ── Quỹ họ / Cúng tiến ──────────────────────────────────────────
+enum FundRecordType {
+  DIEU_DONG  // đóng theo đinh (bắt buộc hàng năm)
+  CUNG_TIEN  // đóng góp thêm tự nguyện
+  CHI        // chi ra (tổ chức giỗ, thưởng học sinh, tu bổ...)
+}
+
+model FundRecord {
+  id       String         @id @default(uuid())
+  familyId String
+  memberId String?        // liên kết member nếu có
+
+  type            FundRecordType
+  year            Int
+  eventName       String?  // tên kỳ cúng / sự kiện (Giỗ tổ, Lễ hội...)
+  contributorName String?  // tên người đóng góp
+  amount          Int      // số tiền VNĐ (dương = thu, âm = chi)
+  description     String?  // ghi chú
+  recordedBy      String?  // người ghi nhận
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  family Family  @relation("FamilyFundRecords", fields: [familyId], references: [id], onDelete: Cascade)
+  member Member? @relation("MemberFundRecords", fields: [memberId], references: [id])
+
+  @@map("fund_records")
 }

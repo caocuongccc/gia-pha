@@ -3,7 +3,7 @@
 // viewOnly=true: xem chi tiết nhưng KHÔNG sửa/thêm/xoá
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { TreeViewComponent } from '../../tree-view/tree-view.component';
 import { FamilyHeaderActionsComponent } from '../components/family-header-actions.component';
@@ -31,7 +31,9 @@ import { environment } from '../../../../environments/environment';
           [family]="family()"
           [viewOnly]="true"
         />
-
+        <button class="btn-fund" (click)="goToFund()">
+          📚 Khuyến học & Quỹ
+        </button>
         <span class="pub-badge">Chỉ xem · Không cần đăng nhập</span>
       </header>
 
@@ -140,7 +142,7 @@ import { environment } from '../../../../environments/environment';
                       [src]="
                         selectedMember()!.photoUrl ||
                         '/assets/avatar-' +
-                          (selectedMember()!.gender.toLowerCase() || 'male') +
+                          (selectedMember()!.gender?.toLowerCase() || 'male') +
                           '.svg'
                       "
                     />
@@ -215,7 +217,7 @@ import { environment } from '../../../../environments/environment';
                     }
                     @if (selectedMember()!.biography) {
                       <div class="ro-row">
-                        <span class="ro-lbl">Ghi chú</span
+                        <span class="ro-lbl">Tiểu sử</span
                         ><span>{{ selectedMember()!.biography }}</span>
                       </div>
                     }
@@ -330,6 +332,19 @@ import { environment } from '../../../../environments/environment';
         border-radius: 12px;
         white-space: nowrap;
       }
+      .btn-fund {
+        padding: 5px 14px;
+        font-size: 12px;
+        background: #0f1e38;
+        border: 1px solid #1e3a6e;
+        color: #60a5fa;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .btn-fund:hover {
+        background: #1e3a6e;
+      }
       .pub-body {
         flex: 1;
         overflow: hidden;
@@ -340,8 +355,7 @@ import { environment } from '../../../../environments/environment';
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        position: absolute;
-        inset: 0;
+        height: 100%;
         gap: 16px;
         color: #64748b;
       }
@@ -653,6 +667,7 @@ import { environment } from '../../../../environments/environment';
 export class PublicTreePage implements OnInit {
   private http = inject(HttpClient);
   private route = inject(ActivatedRoute);
+  private router = inject(Router);
 
   family = signal<Family | null>(null);
   members = signal<Member[]>([]);
@@ -738,6 +753,11 @@ export class PublicTreePage implements OnInit {
   onMemberClicked(m: Member) {
     this.selectedMember.set(m);
     this.roTab.set('info');
+  }
+
+  goToFund() {
+    const familyId = this.route.snapshot.params['token'];
+    this.router.navigate(['/share', familyId, 'fund']);
   }
 
   async ngOnInit() {

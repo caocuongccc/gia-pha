@@ -1,6 +1,7 @@
 // apps/frontend/src/app/app.routes.ts
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
+import { FundPage } from './features/fund/fund.page';
 
 export const routes: Routes = [
   {
@@ -22,6 +23,8 @@ export const routes: Routes = [
       ),
     canActivate: [authGuard], // ✅ dùng authGuard thật, không phải authInterceptor
   },
+  { path: 'share/:id/fund', component: FundPage, data: { public: true } },
+  { path: 'families/:id/fund', component: FundPage },
   {
     path: 'families/:id',
     loadComponent: () =>

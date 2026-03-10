@@ -16,6 +16,7 @@ import { ChiPhaiService } from '../../../core/services/chi-phai.service';
 import { TreeViewComponent } from '../../tree-view/tree-view.component';
 import { MemberFormComponent } from '../../member-form/member-form.component';
 import { RelationFormComponent } from '../../member-form/relation-form.component';
+import { ExportButtonsComponent } from '../../tree-view/export-buttons.component';
 import { ManageChiPhaiComponent } from '../../settings/manage-chi-phai.component';
 import {
   FamilyHeaderActionsComponent,
@@ -35,6 +36,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
     TreeViewComponent,
     MemberFormComponent,
     RelationFormComponent,
+    ExportButtonsComponent,
     ManageChiPhaiComponent,
     FamilyHeaderActionsComponent,
   ],
@@ -43,6 +45,13 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
       <!-- ── Header ──────────────────────────────────────────── -->
       <header class="header">
         <button class="btn-back" (click)="goBack()">← Danh sách</button>
+        <button
+          class="btn-outline"
+          style="font-size:11px"
+          (click)="router.navigate(['/families', familyId, 'fund'])"
+        >
+          📚 Khuyến học & Quỹ
+        </button>
 
         <div class="header-center">
           <h2>{{ familySvc.selectedFamily()?.name }}</h2>
@@ -837,7 +846,7 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   relationSvc = inject(RelationService);
   chiPhaiSvc = inject(ChiPhaiService);
   private route = inject(ActivatedRoute);
-  private router = inject(Router);
+  protected router = inject(Router);
   private http = inject(HttpClient);
 
   familyId = '';

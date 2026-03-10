@@ -73,6 +73,12 @@ async function startServer() {
   const { default: publicFamiliesId } = await import(
     '../api/public/families/[id].js'
   );
+  const { default: scholarshipIndex } = await import(
+    '../api/scholarship/index.js'
+  );
+  const { default: scholarshipId } = await import('../api/scholarship/[id].js');
+  const { default: fundIndex } = await import('../api/fund/index.js');
+  const { default: fundId } = await import('../api/fund/[id].js');
 
   // Helper: inject :id vào req.query
   const injectId = (handler: any) => (req: any, res: any) => {
@@ -115,6 +121,14 @@ async function startServer() {
   app.all('/api/chi', (req, res) => chiIndex(req as any, res as any));
   app.all('/api/phai/:id', injectId(phaiId));
   app.all('/api/phai', (req, res) => phaiIndex(req as any, res as any));
+
+  // scholarship & fund
+  app.all('/api/scholarship/:id', injectId(scholarshipId));
+  app.all('/api/scholarship', (req, res) =>
+    scholarshipIndex(req as any, res as any),
+  );
+  app.all('/api/fund/:id', injectId(fundId));
+  app.all('/api/fund', (req, res) => fundIndex(req as any, res as any));
 
   // invites
   app.all('/api/invites/accept', (req, res) =>

@@ -13,11 +13,12 @@ npx nx serve api # Express API chạy trên :3000
 
 npx prisma studio --schema=apps/api/prisma/schema.prisma
 npx prisma migrate dev --schema=apps/api/prisma/schema.prisma --name=add_invite_tokens
+npx prisma format --schema=apps/api/prisma/schema.prisma
 npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Run ts:
 
-npx tsx scripts/test-sepay.ts
+npx tsx apps\api\src\dev-server.ts
 
 <a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
 
