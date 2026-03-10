@@ -8,6 +8,7 @@ import familiesIdHandler from './families/[id]';
 import familiesTreeHandler from './families/[id]/tree';
 import familiesJoinHandler from './families/[id]/join';
 import familiesMyRoleHandler from './families/[id]/my-role';
+import familiesAccessHandler from './families/[id]/access';
 import membersHandler from './members/index';
 import membersIdHandler from './members/[id]';
 import relationsHandler from './relations/index';
@@ -66,6 +67,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (seg[1] === 'families' && seg[3] === 'my-role') {
     injectId(req, seg[2]);
     return familiesMyRoleHandler(req, res);
+  }
+
+  // /api/families/:id/access
+  if (seg[1] === 'families' && seg[3] === 'access') {
+    injectId(req, seg[2]);
+    return familiesAccessHandler(req, res);
   }
 
   // /api/families/:id

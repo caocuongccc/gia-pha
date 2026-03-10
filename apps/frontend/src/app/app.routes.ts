@@ -2,6 +2,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
 import { FundPage } from './features/fund/fund.page';
+import { AccessPage } from './features/families/pages/access.page';
 
 export const routes: Routes = [
   {
@@ -25,6 +26,11 @@ export const routes: Routes = [
   },
   { path: 'share/:id/fund', component: FundPage, data: { public: true } },
   { path: 'families/:id/fund', component: FundPage },
+  {
+    path: 'families/:id/access',
+    component: AccessPage,
+    canActivate: [authGuard],
+  },
   {
     path: 'families/:id',
     loadComponent: () =>

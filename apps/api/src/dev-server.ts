@@ -59,6 +59,9 @@ async function startServer() {
   const { default: familiesMyRole } = await import(
     '../api/families/[id]/my-role.js'
   );
+  const { default: familiesAccess } = await import(
+    '../api/families/[id]/access.js'
+  );
   const { default: families } = await import('../api/families/index.js');
   const { default: members } = await import('../api/members/index.js');
   const { default: membersId } = await import('../api/members/[id].js');
@@ -105,6 +108,7 @@ async function startServer() {
   );
   app.all('/api/families/:id/join', injectId(familiesJoin));
   app.all('/api/families/:id/my-role', injectId(familiesMyRole));
+  app.all('/api/families/:id/access', injectId(familiesAccess));
   app.all('/api/families/:id', injectId(familiesId));
   app.all('/api/families', (req, res) => families(req as any, res as any));
 

@@ -28,6 +28,19 @@ enum FamilyRole {
   VIEWER
 }
 
+// ── User (sync từ Supabase auth.users) ─
+model User {
+  id            String         @id // = Supabase auth.users.id (UUID)
+  email         String         @unique
+  name          String?
+  avatarUrl     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  familyMembers FamilyMember[]
+
+  @@map("users")
+}
+
 // ── Models ─────────────────────────────
 model Family {
   id          String   @id @default(uuid())
@@ -59,12 +72,12 @@ model Member {
   generation Int       @default(1)
   biography  String?
 
-  alias       String?
-  childOrder  Int?
-  burialPlace String?
-  birthPlace  String?
-  isOutPerson Boolean @default(false)
-  deathYearAm String?
+  alias         String?
+  childOrder    Int?
+  burialPlace   String?
+  birthPlace    String?
+  isOutPerson   Boolean @default(false)
+  deathYearAm   String?
   coupleGroupId String?
 
   chiId  String?
@@ -77,8 +90,8 @@ model Member {
   chi    Chi?   @relation(fields: [chiId], references: [id])
   phai   Phai?  @relation(fields: [phaiId], references: [id])
 
-  fromRelations Relationship[] @relation("FromMember")
-  toRelations   Relationship[] @relation("ToMember")
+  fromRelations Relationship[]      @relation("FromMember")
+  toRelations   Relationship[]      @relation("ToMember")
   scholarships  ScholarshipRecord[] @relation("MemberScholarships")
   fundRecords   FundRecord[]        @relation("MemberFundRecords")
 
@@ -109,6 +122,7 @@ model FamilyMember {
   joinedAt DateTime   @default(now())
 
   family Family @relation(fields: [familyId], references: [id])
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([familyId, userId])
   @@map("family_members")
@@ -167,16 +181,16 @@ model Phai {
 
 // ── Khuyến học ──────────────────────────────────────────────────
 model ScholarshipRecord {
-  id        String  @id @default(uuid())
-  familyId  String
-  memberId  String? // liên kết với Member trong cây (optional)
+  id       String  @id @default(uuid())
+  familyId String
+  memberId String? // liên kết với Member trong cây (optional)
 
-  studentName  String  // tên cháu
-  year         Int     // năm học
+  studentName  String // tên cháu
+  year         Int // năm học
   school       String? // trường
   grade        String? // lớp / cấp
-  achievement  String  // "Học sinh Giỏi" | "Xuất sắc" | "Giải thi" | "Đỗ ĐH" | tự nhập
-  rewardAmount Int?    // số tiền thưởng (VNĐ), null = chưa xác định
+  achievement  String // "Học sinh Giỏi" | "Xuất sắc" | "Giải thi" | "Đỗ ĐH" | tự nhập
+  rewardAmount Int? // số tiền thưởng (VNĐ), null = chưa xác định
   awardedBy    String? // người duyệt/trao thưởng
   notes        String?
   createdAt    DateTime @default(now())
@@ -190,25 +204,25 @@ model ScholarshipRecord {
 
 // ── Quỹ họ / Cúng tiến ──────────────────────────────────────────
 enum FundRecordType {
-  DIEU_DONG  // đóng theo đinh (bắt buộc hàng năm)
-  CUNG_TIEN  // đóng góp thêm tự nguyện
-  CHI        // chi ra (tổ chức giỗ, thưởng học sinh, tu bổ...)
+  DIEU_DONG // đóng theo đinh (bắt buộc hàng năm)
+  CUNG_TIEN // đóng góp thêm tự nguyện
+  CHI // chi ra (tổ chức giỗ, thưởng học sinh, tu bổ...)
 }
 
 model FundRecord {
-  id       String         @id @default(uuid())
+  id       String  @id @default(uuid())
   familyId String
-  memberId String?        // liên kết member nếu có
+  memberId String? // liên kết member nếu có
 
   type            FundRecordType
   year            Int
-  eventName       String?  // tên kỳ cúng / sự kiện (Giỗ tổ, Lễ hội...)
-  contributorName String?  // tên người đóng góp
-  amount          Int      // số tiền VNĐ (dương = thu, âm = chi)
-  description     String?  // ghi chú
-  recordedBy      String?  // người ghi nhận
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  eventName       String? // tên kỳ cúng / sự kiện (Giỗ tổ, Lễ hội...)
+  contributorName String? // tên người đóng góp
+  amount          Int // số tiền VNĐ (dương = thu, âm = chi)
+  description     String? // ghi chú
+  recordedBy      String? // người ghi nhận
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   family Family  @relation("FamilyFundRecords", fields: [familyId], references: [id], onDelete: Cascade)
   member Member? @relation("MemberFundRecords", fields: [memberId], references: [id])

@@ -1,12 +1,9 @@
 // apps/api/api/families/[id]/my-role.ts
-// GET /api/families/:id/my-role  — trả về role của user đang đăng nhập
+// GET /api/families/:id/my-role  — trả về role của user trong gia phả
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { prisma } from '../../../src/_lib/prisma';
 import { requireAuth } from '../../../src/_lib/auth';
 import { setCorsHeaders, handleOptions } from '../../../src/_lib/cors';
-
-// Email admin cứng — đổi thành email thực của bạn
-const ADMIN_EMAILS = ['your-admin@email.com'];
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
@@ -19,18 +16,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { id: familyId } = req.query as { id: string };
 
-  // Super admin → luôn là OWNER
-  if (ADMIN_EMAILS.includes(user.email ?? '')) {
-    return res.json({ data: { role: 'OWNER', isAdmin: true } });
-  }
-
   const access = await prisma.familyMember.findFirst({
     where: { familyId, userId: user.id },
   });
 
+  // Chưa join → tự join VIEWER
   if (!access) {
-    return res.json({ data: { role: null } }); // chưa join
+    await prisma.familyMember.create({
+      data: { familyId, userId: user.id, role: 'VIEWER' },
+    });
+    return res.json({ data: { role: 'VIEWER' } });
   }
 
-  return res.json({ data: { role: access.role } });
+  return res.json({ data: { role: access.role, userId: user.id } });
 }

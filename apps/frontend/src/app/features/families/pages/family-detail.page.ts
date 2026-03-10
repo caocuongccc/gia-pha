@@ -52,6 +52,15 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
         >
           📚 Khuyến học & Quỹ
         </button>
+        @if (isOwner()) {
+          <button
+            class="btn-outline"
+            style="font-size:11px"
+            (click)="router.navigate(['/families', familyId, 'access'])"
+          >
+            👥 Phân quyền
+          </button>
+        }
 
         <div class="header-center">
           <h2>{{ familySvc.selectedFamily()?.name }}</h2>
@@ -71,6 +80,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
           [shareUrl]="shareUrl()"
           [copied]="copied()"
           [viewOnly]="isViewOnly()"
+          [isOwner]="isOwner()"
           (chiPhaiClicked)="togglePanel('chiPhai')"
           (togglePublicClicked)="togglePublic()"
           (copyLinkClicked)="copyShareUrl()"
@@ -146,7 +156,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
                           class="mc-actions"
                           (click)="$event.stopPropagation()"
                         >
-                          @if (!isViewOnly()) {
+                          @if (canEdit()) {
                             <button (click)="openEditMember(m)" title="Sửa">
                               ✏️
                             </button>
@@ -213,7 +223,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
                               class="mc-actions"
                               (click)="$event.stopPropagation()"
                             >
-                              @if (!isViewOnly()) {
+                              @if (canEdit()) {
                                 <button (click)="openEditMember(m)" title="Sửa">
                                   ✏️
                                 </button>
@@ -269,7 +279,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
                   Thêm thành viên
                 }
                 @if (activePanel() === 'editMember') {
-                  {{ isViewOnly() ? 'Thông tin' : 'Sửa' }} ·
+                  {{ canEdit() ? 'Sửa' : 'Thông tin' }} ·
                   {{ memberSvc.selectedMember()?.fullName }}
                 }
                 @if (activePanel() === 'relations') {
@@ -300,7 +310,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
               <button class="btn-close" (click)="closePanel()">✕</button>
             </div>
             <div class="panel-body">
-              @if (activePanel() === 'addMember' && !isViewOnly()) {
+              @if (activePanel() === 'addMember' && canEdit()) {
                 <app-member-form
                   [familyId]="familyId"
                   (submitted)="onMemberSaved()"
@@ -858,6 +868,14 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   // VIEWER không được thêm/sửa/xoá
   isViewOnly = computed(() => this.userRole() === 'VIEWER');
 
+  // EDITOR + OWNER được sửa nội dung
+  canEdit = computed(
+    () => this.userRole() === 'OWNER' || this.userRole() === 'EDITOR',
+  );
+
+  // Chỉ OWNER được quản lý gia phả (xoá, public, chi phái, quản lý role)
+  isOwner = computed(() => this.userRole() === 'OWNER');
+
   // FIX 1: route đúng là /share/:token (không phải /public/:id)
   shareUrl = computed(() => {
     const fam = this.familySvc.selectedFamily();
@@ -925,7 +943,8 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   }
 
   togglePanel(panel: SidePanel) {
-    this.activePanel.set(this.activePanel() === panel ? 'none' : panel);
+    const next = this.activePanel() === panel ? 'none' : panel;
+    this.activePanel.set(next);
   }
 
   closePanel() {

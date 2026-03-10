@@ -254,7 +254,7 @@ export class FamilyHeaderActionsComponent {
   shareUrl = input('');
   copied = input(false);
   viewOnly = input(false);
-
+  isOwner = input(false);
   // Outputs (actions mà parent xử lý)
   chiPhaiClicked = output<void>();
   togglePublicClicked = output<void>();
