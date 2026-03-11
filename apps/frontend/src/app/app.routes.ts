@@ -2,7 +2,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth/auth.guard';
 import { FundPage } from './features/fund/fund.page';
-import { AccessPage } from './features/families/pages/access.page';
 
 export const routes: Routes = [
   {
@@ -27,8 +26,19 @@ export const routes: Routes = [
   { path: 'share/:id/fund', component: FundPage, data: { public: true } },
   { path: 'families/:id/fund', component: FundPage },
   {
-    path: 'families/:id/access',
-    component: AccessPage,
+    path: 'share/:id/activities',
+    loadComponent: () =>
+      import('./features/activities/activities.page').then(
+        (m) => m.ActivitiesPage,
+      ),
+    data: { public: true },
+  },
+  {
+    path: 'families/:id/activities',
+    loadComponent: () =>
+      import('./features/activities/activities.page').then(
+        (m) => m.ActivitiesPage,
+      ),
     canActivate: [authGuard],
   },
   {
@@ -56,9 +66,15 @@ export const routes: Routes = [
   {
     path: 'auth/google/callback',
     loadComponent: () =>
-      import('./features/auth/google-callback.component').then(
-        (m) => m.GoogleCallbackComponent,
+      import('./features/auth/auth-callback.component').then(
+        (m) => m.AuthCallbackComponent,
       ),
+  },
+  {
+    path: 'families/:id/access',
+    loadComponent: () =>
+      import('./features/families/pages/access.page').then((m) => m.AccessPage),
+    canActivate: [authGuard],
   },
   {
     path: '**',

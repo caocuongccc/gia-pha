@@ -31,10 +31,14 @@ import { environment } from '../../../../environments/environment';
           [family]="family()"
           [viewOnly]="true"
         />
+
+        <span class="pub-badge">Chỉ xem · Không cần đăng nhập</span>
         <button class="btn-fund" (click)="goToFund()">
           📚 Khuyến học & Quỹ
         </button>
-        <span class="pub-badge">Chỉ xem · Không cần đăng nhập</span>
+        <button class="btn-fund" (click)="goToActivities()">
+          📰 Hoạt động
+        </button>
       </header>
 
       <div class="pub-body">
@@ -196,7 +200,12 @@ import { environment } from '../../../../environments/environment';
                         }}</span>
                       </div>
                     }
-
+                    <!-- @if (selectedMember()!.birthPlace) {
+                      <div class="ro-row">
+                        <span class="ro-lbl">Quê quán</span
+                        ><span>{{ selectedMember()!.birthPlace }}</span>
+                      </div>
+                    } -->
                     @if (selectedMember()!.burialPlace) {
                       <div class="ro-row">
                         <span class="ro-lbl">Mộ phần</span
@@ -758,6 +767,11 @@ export class PublicTreePage implements OnInit {
   goToFund() {
     const familyId = this.route.snapshot.params['token'];
     this.router.navigate(['/share', familyId, 'fund']);
+  }
+
+  goToActivities() {
+    const familyId = this.route.snapshot.params['token'];
+    this.router.navigate(['/share', familyId, 'activities']);
   }
 
   async ngOnInit() {

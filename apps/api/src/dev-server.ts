@@ -82,6 +82,8 @@ async function startServer() {
   const { default: scholarshipId } = await import('../api/scholarship/[id].js');
   const { default: fundIndex } = await import('../api/fund/index.js');
   const { default: fundId } = await import('../api/fund/[id].js');
+  const { default: postIndex } = await import('../api/post/index.js');
+  const { default: postId } = await import('../api/post/[id].js');
 
   // Helper: inject :id vào req.query
   const injectId = (handler: any) => (req: any, res: any) => {
@@ -133,6 +135,10 @@ async function startServer() {
   );
   app.all('/api/fund/:id', injectId(fundId));
   app.all('/api/fund', (req, res) => fundIndex(req as any, res as any));
+
+  // post
+  app.all('/api/post/:id', injectId(postId));
+  app.all('/api/post', (req, res) => postIndex(req as any, res as any));
 
   // invites
   app.all('/api/invites/accept', (req, res) =>

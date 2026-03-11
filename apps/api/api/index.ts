@@ -24,6 +24,8 @@ import scholarshipHandler from './scholarship/index';
 import scholarshipIdHandler from './scholarship/[id]';
 import fundHandler from './fund/index';
 import fundIdHandler from './fund/[id]';
+import postHandler from './post/index';
+import postIdHandler from './post/[id]';
 
 // ── Helper inject :id vào req.query ──────────────────────────────────────────
 function injectId(req: VercelRequest, id: string) {
@@ -160,6 +162,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // /api/fund
   if (seg[1] === 'fund') {
     return fundHandler(req, res);
+  }
+
+  // /api/post/:id
+  if (seg[1] === 'post' && seg[2]) {
+    injectId(req, seg[2]);
+    return postIdHandler(req, res);
+  }
+
+  // /api/post
+  if (seg[1] === 'post') {
+    return postHandler(req, res);
   }
 
   return res.status(404).json({ error: 'Route not found', path });

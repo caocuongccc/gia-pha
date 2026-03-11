@@ -30,13 +30,15 @@ enum FamilyRole {
 
 // ── User (sync từ Supabase auth.users) ─
 model User {
-  id            String         @id // = Supabase auth.users.id (UUID)
-  email         String         @unique
-  name          String?
-  avatarUrl     String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id        String   @id // = Supabase auth.users.id (UUID)
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   familyMembers FamilyMember[]
+  posts         Post[]         @relation("UserPosts")
 
   @@map("users")
 }
@@ -57,6 +59,7 @@ model Family {
   chiList      Chi[]
   scholarships ScholarshipRecord[] @relation("FamilyScholarships")
   fundRecords  FundRecord[]        @relation("FamilyFundRecords")
+  posts        Post[]              @relation("FamilyPosts")
 
   @@map("families")
 }
@@ -228,4 +231,38 @@ model FundRecord {
   member Member? @relation("MemberFundRecords", fields: [memberId], references: [id])
 
   @@map("fund_records")
+}
+
+enum PostType {
+  TEXT
+  ALBUM
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  familyId  String
+  authorId  String
+  type      PostType
+  title     String?
+  content   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  family Family      @relation("FamilyPosts", fields: [familyId], references: [id], onDelete: Cascade)
+  author User        @relation("UserPosts", fields: [authorId], references: [id])
+  photos PostPhoto[]
+
+  @@map("posts")
+}
+
+model PostPhoto {
+  id      String  @id @default(uuid())
+  postId  String
+  url     String
+  caption String?
+  order   Int     @default(0)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("post_photos")
 }

@@ -52,6 +52,13 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
         >
           📚 Khuyến học & Quỹ
         </button>
+        <button
+          class="btn-outline"
+          style="font-size:11px"
+          (click)="router.navigate(['/families', familyId, 'activities'])"
+        >
+          📰 Hoạt động
+        </button>
         @if (isOwner()) {
           <button
             class="btn-outline"
@@ -340,7 +347,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
                     <!-- @if (m.birthPlace) {
                       <div class="ro-row">
                         <span class="ro-lbl">Quê quán</span
-                        ><span>{{ m.birthPlace }}</span>
+                        ><span>{{ m.bi }}</span>
                       </div>
                     } -->
                     @if (m.burialPlace) {
