@@ -146,7 +146,7 @@ import { environment } from '../../../../environments/environment';
                       [src]="
                         selectedMember()!.photoUrl ||
                         '/assets/avatar-' +
-                          (selectedMember()!.gender?.toLowerCase() || 'male') +
+                          (selectedMember()!.gender.toLowerCase() || 'male') +
                           '.svg'
                       "
                     />

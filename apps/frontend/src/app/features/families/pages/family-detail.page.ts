@@ -16,7 +16,6 @@ import { ChiPhaiService } from '../../../core/services/chi-phai.service';
 import { TreeViewComponent } from '../../tree-view/tree-view.component';
 import { MemberFormComponent } from '../../member-form/member-form.component';
 import { RelationFormComponent } from '../../member-form/relation-form.component';
-import { ExportButtonsComponent } from '../../tree-view/export-buttons.component';
 import { ManageChiPhaiComponent } from '../../settings/manage-chi-phai.component';
 import {
   FamilyHeaderActionsComponent,
@@ -36,7 +35,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
     TreeViewComponent,
     MemberFormComponent,
     RelationFormComponent,
-    ExportButtonsComponent,
+
     ManageChiPhaiComponent,
     FamilyHeaderActionsComponent,
   ],
