@@ -1,94 +1,109 @@
-import { google } from 'googleapis';
+// apps/api/src/_lib/google-drive.ts
 import { Readable } from 'stream';
+import { getFamilyDriveClient } from './google-oauth';
+import { prisma } from './prisma';
 
-/** Khởi tạo OAuth2 client dùng chung */
-export function createOAuth2Client() {
-  return new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID!,
-    process.env.GOOGLE_CLIENT_SECRET!,
-    process.env.GOOGLE_REDIRECT_URI!,
-  );
-}
+const ROOT_FOLDER = process.env.GOOGLE_DRIVE_FOLDER_NAME || 'GiaPha';
 
-/** Tạo URL để redirect user đến Google login */
-export function getAuthUrl(): string {
-  const oauth2 = createOAuth2Client();
-  return oauth2.generateAuthUrl({
-    access_type: 'offline', // Lấy refresh_token để dùng sau
-    prompt: 'consent', // Luôn hỏi lại để lấy refresh_token
-    scope: [
-      'https://www.googleapis.com/auth/drive.file',
-      'https://www.googleapis.com/auth/userinfo.email',
-    ],
-  });
-}
-
-/**
- * Upload 1 file lên Google Drive của user.
- * @param accessToken  - OAuth2 access token của user
- * @param fileBuffer   - Buffer chứa dữ liệu file
- * @param filename     - Tên file
- * @param mimeType     - e.g. "image/jpeg"
- * @returns public URL để embed trực tiếp vào
- */
-export async function uploadToDrive(
-  accessToken: string,
-  fileBuffer: Buffer,
-  filename: string,
-  mimeType: string,
+async function getOrCreateFolder(
+  drive: Awaited<ReturnType<typeof getFamilyDriveClient>>,
+  name: string,
+  parentId: string,
 ): Promise<string> {
-  const oauth2 = createOAuth2Client();
-  oauth2.setCredentials({ access_token: accessToken });
-
-  const drive = google.drive({ version: 'v3', auth: oauth2 });
-
-  // Tìm hoặc tạo folder "Cây Gia Phả" trong Drive của user
-  const folderId = await ensureFolder(drive);
-
-  // Upload file
-  const response = await drive.files.create({
-    requestBody: {
-      name: filename,
-      parents: [folderId],
-      mimeType,
-    },
-    media: {
-      mimeType,
-      body: Readable.from(fileBuffer),
-    },
-    fields: 'id, name, webViewLink, webContentLink',
-  });
-
-  const fileId = response.data.id!;
-
-  // Set permission: "anyone with link can view" → dùng được như img src
-  await drive.permissions.create({
-    fileId,
-    requestBody: { type: 'anyone', role: 'reader' },
-  });
-
-  // URL trực tiếp để nhúng vào thẻ
-  return `https://drive.google.com/uc?export=view&id=${fileId}`;
-}
-
-/** Tìm folder "Cây Gia Phả" trong Drive, tạo mới nếu chưa có */
-async function ensureFolder(drive: any): Promise<string> {
-  const FOLDER_NAME = 'Cây Gia Phả — Ảnh thành viên';
-
-  const existing = await drive.files.list({
-    q: `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+  const res = await drive.files.list({
+    q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
     fields: 'files(id)',
   });
+  if (res.data.files?.length) return res.data.files[0].id!;
 
-  if (existing.data.files?.length) return existing.data.files[0].id!;
-
-  // Chưa có → tạo mới
   const folder = await drive.files.create({
     requestBody: {
-      name: FOLDER_NAME,
+      name,
       mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentId],
     },
     fields: 'id',
   });
   return folder.data.id!;
+}
+
+async function getFamilyRootFolder(
+  familyId: string,
+): Promise<{ drive: any; folderId: string }> {
+  const drive = await getFamilyDriveClient(familyId);
+
+  // Kiểm tra folder đã cache chưa
+  const account = await prisma.familyDriveAccount.findUnique({
+    where: { familyId },
+    select: { folderId: true },
+  });
+
+  if (account?.folderId) return { drive, folderId: account.folderId };
+
+  // Tìm hoặc tạo root folder "GiaPha"
+  const rootRes = await drive.files.list({
+    q: `name='${ROOT_FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    fields: 'files(id)',
+  });
+
+  let rootId: string;
+  if (rootRes.data.files?.length) {
+    rootId = rootRes.data.files[0].id!;
+  } else {
+    const f = await drive.files.create({
+      requestBody: {
+        name: ROOT_FOLDER,
+        mimeType: 'application/vnd.google-apps.folder',
+      },
+      fields: 'id',
+    });
+    rootId = f.data.id!;
+  }
+
+  // Cache folderId
+  await prisma.familyDriveAccount.update({
+    where: { familyId },
+    data: { folderId: rootId },
+  });
+
+  return { drive, folderId: rootId };
+}
+
+export async function uploadFileToDrive(
+  familyId: string,
+  fileName: string,
+  buffer: Buffer,
+  mimeType: string,
+  subFolder: string, // e.g. postId hoặc 'album-xxx'
+): Promise<{ fileId: string; url: string }> {
+  const { drive, folderId: rootId } = await getFamilyRootFolder(familyId);
+
+  // Subfolder theo postId để dễ manage
+  const subId = await getOrCreateFolder(drive, subFolder, rootId);
+
+  const readable = new Readable();
+  readable.push(buffer);
+  readable.push(null);
+
+  const res = await drive.files.create({
+    requestBody: { name: fileName, parents: [subId] },
+    media: { mimeType, body: readable },
+    fields: 'id',
+  });
+
+  const fileId = res.data.id!;
+
+  // Public read để hiển thị ảnh
+  await drive.permissions.create({
+    fileId,
+    requestBody: { role: 'reader', type: 'anyone' },
+  });
+
+  // URL thumbnail — không cần auth để xem
+  const url = `https://lh3.googleusercontent.com/d/${fileId}`;
+  return { fileId, url };
+}
+
+export function getThumbnailUrl(fileId: string, size = 400): string {
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w${size}`;
 }

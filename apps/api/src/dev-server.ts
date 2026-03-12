@@ -84,6 +84,13 @@ async function startServer() {
   const { default: fundId } = await import('../api/fund/[id].js');
   const { default: postIndex } = await import('../api/post/index.js');
   const { default: postId } = await import('../api/post/[id].js');
+  const { default: uploadIndex } = await import('../api/upload/index.js');
+  const { default: googleAuthIndex } = await import(
+    '../api/google-auth/index.js'
+  );
+  const { default: googleAuthCb } = await import(
+    '../api/google-auth/callback.js'
+  );
 
   // Helper: inject :id vào req.query
   const injectId = (handler: any) => (req: any, res: any) => {
@@ -139,6 +146,49 @@ async function startServer() {
   // post
   app.all('/api/post/:id', injectId(postId));
   app.all('/api/post', (req, res) => postIndex(req as any, res as any));
+  app.all('/api/upload', (req, res) => uploadIndex(req as any, res as any));
+  app.all('/api/google-auth/callback', async (req: any, res: any) => {
+    try {
+      await googleAuthCb(req, res);
+    } catch (e: any) {
+      console.error('[google-auth/callback]', e?.message);
+      if (!res.headersSent) res.status(500).json({ error: e?.message });
+    }
+  });
+  // google-auth/permissions
+  let googleAuthPerms: any;
+  try {
+    const m = await import('../api/google-auth/permissions.js').catch(
+      () => import('../api/google-auth/permissions'),
+    );
+    googleAuthPerms = m.default;
+    console.log('✅ google-auth/permissions loaded');
+  } catch (e: any) {
+    console.error('❌ Failed to load google-auth/permissions:', e.message);
+  }
+  app.all('/api/google-auth/permissions', async (req: any, res: any) => {
+    if (!googleAuthPerms) {
+      return res
+        .status(500)
+        .json({
+          error: 'permissions handler not loaded — check compile output',
+        });
+    }
+    try {
+      await googleAuthPerms(req, res);
+    } catch (e: any) {
+      console.error('[google-auth/permissions]', e?.message);
+      if (!res.headersSent) res.status(500).json({ error: e?.message });
+    }
+  });
+  app.all('/api/google-auth', async (req: any, res: any) => {
+    try {
+      await googleAuthIndex(req, res);
+    } catch (e: any) {
+      console.error('[google-auth]', e?.message);
+      if (!res.headersSent) res.status(500).json({ error: e?.message });
+    }
+  });
 
   // invites
   app.all('/api/invites/accept', (req, res) =>

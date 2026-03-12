@@ -26,6 +26,9 @@ import fundHandler from './fund/index';
 import fundIdHandler from './fund/[id]';
 import postHandler from './post/index';
 import postIdHandler from './post/[id]';
+import uploadHandler from './upload/index';
+import googleAuthHandler from './google-auth/index';
+import googleAuthCallback from './google-auth/callback';
 
 // ── Helper inject :id vào req.query ──────────────────────────────────────────
 function injectId(req: VercelRequest, id: string) {
@@ -174,6 +177,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (seg[1] === 'post') {
     return postHandler(req, res);
   }
+
+  // /api/upload
+  if (seg[1] === 'upload') return uploadHandler(req, res);
+
+  // /api/google-auth/callback & /api/google-auth
+  if (seg[1] === 'google-auth' && seg[2] === 'callback')
+    return googleAuthCallback(req, res);
+  if (seg[1] === 'google-auth') return googleAuthHandler(req, res);
 
   return res.status(404).json({ error: 'Route not found', path });
 }

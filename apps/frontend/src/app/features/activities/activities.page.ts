@@ -3,11 +3,9 @@ import {
   Component,
   inject,
   OnInit,
+  OnDestroy,
   signal,
   computed,
-  ElementRef,
-  ViewChild,
-  AfterViewInit,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -15,366 +13,474 @@ import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { environment } from '../../../environments/environment';
+import { CkEditorComponent } from '../../shared/components/ck-editor/ck-editor.component';
 
+type Filter = 'all' | 'text' | 'album';
 type PostType = 'TEXT' | 'ALBUM';
 
 interface Photo {
   url: string;
+  driveFileId?: string;
   caption?: string;
+  width?: number;
+  height?: number;
 }
-
 interface Post {
   id: string;
   type: PostType;
   title?: string;
   content?: string;
-  photos: { id: string; url: string; caption?: string; order: number }[];
+  albumDate?: string;
+  albumLocation?: string;
+  photos: (Photo & { id: string; order: number })[];
   author: { id: string; name?: string; email: string; avatarUrl?: string };
-  createdAt: string;
   authorId: string;
+  createdAt: string;
+}
+interface UploadFile {
+  file: File;
+  preview: string;
+  caption: string;
+  uploading: boolean;
+  done: boolean;
+  error: string;
 }
 
 @Component({
   selector: 'app-activities',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CkEditorComponent],
   template: `
-    <div class="act">
-      <!-- Header -->
-      <header class="act-header">
-        <button class="btn-back" (click)="goBack()">← Gia phả</button>
-        <div class="act-title">
-          <h1>📰 Hoạt động họ</h1>
-          <span class="act-sub">{{ familyName() }}</span>
-        </div>
-        @if (canPost()) {
-          <button class="btn-new" (click)="openCreate()">+ Đăng bài</button>
-        }
-      </header>
+    <div class="page">
+      <!-- ── Sidebar ─────────────────────────────────────────────── -->
+      <aside class="sidebar">
+        <button class="back-btn" (click)="goBack()">← Gia phả</button>
 
-      <!-- Feed -->
-      <div class="act-body">
+        <div class="family-name">{{ familyName() }}</div>
+        <div class="sidebar-label">Hoạt động họ</div>
+
+        <nav class="filter-nav">
+          <button
+            class="filter-btn"
+            [class.active]="filter() === 'all'"
+            (click)="filter.set('all')"
+          >
+            <span class="fi-icon">📰</span>
+            <span>Tất cả</span>
+            <span class="fi-count">{{ posts().length }}</span>
+          </button>
+          <button
+            class="filter-btn"
+            [class.active]="filter() === 'text'"
+            (click)="filter.set('text')"
+          >
+            <span class="fi-icon">📝</span>
+            <span>Bài viết</span>
+            <span class="fi-count">{{ textCount() }}</span>
+          </button>
+          <button
+            class="filter-btn"
+            [class.active]="filter() === 'album'"
+            (click)="filter.set('album')"
+          >
+            <span class="fi-icon">🖼️</span>
+            <span>Album ảnh</span>
+            <span class="fi-count">{{ albumCount() }}</span>
+          </button>
+        </nav>
+
+        @if (canPost()) {
+          <div class="sidebar-divider"></div>
+          <button class="compose-btn" (click)="openCreate('TEXT')">
+            ✏️ &nbsp;Viết bài
+          </button>
+          <button class="compose-btn album" (click)="openCreate('ALBUM')">
+            📷 &nbsp;Tạo album
+          </button>
+        }
+
+        @if (!isPublicView && totalPhotos() > 0) {
+          <div class="sidebar-divider"></div>
+          <div class="stat-row">
+            <span>Tổng ảnh</span><strong>{{ totalPhotos() }}</strong>
+          </div>
+          <div class="stat-row">
+            <span>Album</span><strong>{{ albumCount() }}</strong>
+          </div>
+          <div class="stat-row">
+            <span>Bài viết</span><strong>{{ textCount() }}</strong>
+          </div>
+        }
+      </aside>
+
+      <!-- ── Feed ────────────────────────────────────────────────── -->
+      <main class="feed-wrap">
         @if (loading()) {
-          <div class="act-empty">Đang tải...</div>
-        } @else if (posts().length === 0) {
-          <div class="act-empty">
-            <div style="font-size:40px;margin-bottom:12px">📭</div>
-            <div>Chưa có bài đăng nào</div>
+          <div class="spinner-wrap">
+            <div class="big-spinner"></div>
+          </div>
+        } @else if (filtered().length === 0) {
+          <div class="empty-state">
+            <div class="empty-icon">
+              {{ filter() === 'album' ? '🖼️' : '📭' }}
+            </div>
+            <div class="empty-title">
+              Chưa có
+              {{
+                filter() === 'album'
+                  ? 'album'
+                  : filter() === 'text'
+                    ? 'bài viết'
+                    : 'nội dung'
+              }}
+              nào
+            </div>
             @if (canPost()) {
-              <div style="font-size:12px;margin-top:6px;color:#334155">
-                Hãy là người đầu tiên đăng bài!
-              </div>
+              <div class="empty-hint">Nhấn nút bên trái để đăng đầu tiên</div>
             }
           </div>
         } @else {
           <div class="feed">
-            @for (post of posts(); track post.id) {
-              <div class="post-card">
-                <!-- Post header -->
-                <div class="post-header">
-                  <div class="post-author">
-                    @if (post.author.avatarUrl) {
-                      <img
-                        class="author-avatar"
-                        [src]="post.author.avatarUrl"
-                      />
-                    } @else {
-                      <div class="author-fallback">
-                        {{ initials(post.author.name || post.author.email) }}
+            @for (post of filtered(); track post.id) {
+              <!-- ── TEXT POST ──────────────────────────────────── -->
+              @if (post.type === 'TEXT') {
+                <article class="card text-card">
+                  <div class="card-header">
+                    <div class="author-row">
+                      @if (post.author.avatarUrl) {
+                        <img class="av" [src]="post.author.avatarUrl" />
+                      } @else {
+                        <div class="av av-fb">
+                          {{ initials(post.author.name || post.author.email) }}
+                        </div>
+                      }
+                      <div class="author-info">
+                        <span class="author-name">{{
+                          post.author.name || post.author.email
+                        }}</span>
+                        <span class="post-time">{{
+                          fmtDate(post.createdAt)
+                        }}</span>
+                      </div>
+                      <span class="type-chip text-chip">📝 Bài viết</span>
+                    </div>
+                    @if (canManage(post)) {
+                      <div class="card-actions">
+                        <button
+                          class="act-btn"
+                          (click)="editPost(post)"
+                          title="Sửa"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          class="act-btn del"
+                          (click)="deletePost(post)"
+                          title="Xoá"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     }
-                    <div>
-                      <div class="author-name">
-                        {{ post.author.name || post.author.email }}
+                  </div>
+                  @if (post.title) {
+                    <h2 class="post-title">{{ post.title }}</h2>
+                  }
+                  <div
+                    class="post-body ck-out"
+                    [innerHTML]="safe(post.content ?? '')"
+                  ></div>
+                </article>
+              }
+
+              <!-- ── ALBUM POST ─────────────────────────────────── -->
+              @if (post.type === 'ALBUM') {
+                <article class="card album-card">
+                  <div class="card-header">
+                    <div class="author-row">
+                      @if (post.author.avatarUrl) {
+                        <img class="av" [src]="post.author.avatarUrl" />
+                      } @else {
+                        <div class="av av-fb">
+                          {{ initials(post.author.name || post.author.email) }}
+                        </div>
+                      }
+                      <div class="author-info">
+                        <span class="author-name">{{
+                          post.author.name || post.author.email
+                        }}</span>
+                        <span class="post-time">{{
+                          fmtDate(post.createdAt)
+                        }}</span>
                       </div>
-                      <div class="post-date">{{ fmtDate(post.createdAt) }}</div>
+                      <span class="type-chip album-chip">🖼️ Album</span>
+                    </div>
+                    @if (canManage(post)) {
+                      <div class="card-actions">
+                        <button class="act-btn" (click)="editPost(post)">
+                          ✏️
+                        </button>
+                        <button class="act-btn del" (click)="deletePost(post)">
+                          🗑️
+                        </button>
+                      </div>
+                    }
+                  </div>
+
+                  <!-- Album title + meta -->
+                  <div class="album-meta-row">
+                    @if (post.title) {
+                      <h2 class="post-title">{{ post.title }}</h2>
+                    }
+                    <div class="album-chips">
+                      @if (post.albumDate) {
+                        <span class="meta-chip"
+                          >📅 {{ fmtDateOnly(post.albumDate) }}</span
+                        >
+                      }
+                      @if (post.albumLocation) {
+                        <span class="meta-chip"
+                          >📍 {{ post.albumLocation }}</span
+                        >
+                      }
+                      <span class="meta-chip"
+                        >{{ post.photos.length }} ảnh</span
+                      >
                     </div>
                   </div>
-                  <div class="post-actions">
-                    <span
-                      class="post-type-badge"
-                      [class.album]="post.type === 'ALBUM'"
-                    >
-                      {{ post.type === 'TEXT' ? '📝 Bài viết' : '🖼️ Album' }}
-                    </span>
-                    @if (canManage(post)) {
-                      <button
-                        class="btn-icon"
-                        (click)="editPost(post)"
-                        title="Sửa"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        class="btn-icon danger"
-                        (click)="deletePost(post)"
-                        title="Xoá"
-                      >
-                        🗑️
-                      </button>
-                    }
-                  </div>
-                </div>
 
-                <!-- Title -->
-                @if (post.title) {
-                  <h2 class="post-title">{{ post.title }}</h2>
-                }
-
-                <!-- TEXT content -->
-                @if (post.type === 'TEXT' && post.content) {
-                  <div
-                    class="post-content ck-content"
-                    [innerHTML]="sanitize(post.content)"
-                  ></div>
-                }
-
-                <!-- ALBUM grid -->
-                @if (post.type === 'ALBUM' && post.photos.length > 0) {
-                  <div
-                    class="photo-grid"
-                    [class.single]="post.photos.length === 1"
-                    [class.double]="post.photos.length === 2"
-                  >
-                    @for (photo of post.photos; track photo.id) {
-                      <div
-                        class="photo-item"
-                        (click)="openLightbox(post.photos, $index)"
-                      >
-                        <img
-                          [src]="photo.url"
-                          [alt]="photo.caption || ''"
-                          loading="lazy"
-                        />
-                        @if (photo.caption) {
-                          <div class="photo-caption">{{ photo.caption }}</div>
-                        }
-                      </div>
-                    }
-                  </div>
-                }
-              </div>
+                  <!-- Photo masonry -->
+                  @if (post.photos.length > 0) {
+                    <div class="masonry">
+                      @for (
+                        photo of post.photos;
+                        track photo.id;
+                        let i = $index
+                      ) {
+                        <div class="m-item" (click)="openLb(post.photos, i)">
+                          <img
+                            [src]="photo.url"
+                            [alt]="photo.caption || ''"
+                            loading="lazy"
+                            (error)="hideImg($event)"
+                          />
+                          @if (photo.caption) {
+                            <div class="m-cap">{{ photo.caption }}</div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
+                </article>
+              }
             }
           </div>
         }
-      </div>
+      </main>
 
-      <!-- Lightbox -->
-      @if (lightbox()) {
-        <div class="lightbox" (click)="closeLightbox()">
-          <button class="lb-close" (click)="closeLightbox()">✕</button>
-          @if (lbIndex() > 0) {
+      <!-- ── Lightbox ─────────────────────────────────────────────── -->
+      @if (lbPhotos()) {
+        <div class="lb" (click)="closeLb()">
+          <button class="lb-x" (click)="closeLb()">✕</button>
+          @if (lbI() > 0) {
             <button
-              class="lb-nav lb-prev"
-              (click)="$event.stopPropagation(); lbIndex.set(lbIndex() - 1)"
+              class="lb-nav lb-l"
+              (click)="$event.stopPropagation(); lbI.set(lbI() - 1)"
             >
               ‹
             </button>
           }
           <img
             class="lb-img"
-            [src]="lightbox()![lbIndex()].url"
+            [src]="lbPhotos()![lbI()].url"
             (click)="$event.stopPropagation()"
           />
-          @if (lightbox()![lbIndex()].caption) {
-            <div class="lb-caption">{{ lightbox()![lbIndex()].caption }}</div>
+          @if (lbPhotos()![lbI()].caption) {
+            <div class="lb-cap">{{ lbPhotos()![lbI()].caption }}</div>
           }
-          @if (lbIndex() < lightbox()!.length - 1) {
+          @if (lbI() < lbPhotos()!.length - 1) {
             <button
-              class="lb-nav lb-next"
-              (click)="$event.stopPropagation(); lbIndex.set(lbIndex() + 1)"
+              class="lb-nav lb-r"
+              (click)="$event.stopPropagation(); lbI.set(lbI() + 1)"
             >
               ›
             </button>
           }
-          <div class="lb-counter">
-            {{ lbIndex() + 1 }} / {{ lightbox()!.length }}
-          </div>
+          <div class="lb-n">{{ lbI() + 1 }} / {{ lbPhotos()!.length }}</div>
         </div>
       }
 
-      <!-- Create/Edit Modal -->
+      <!-- ── Modal ────────────────────────────────────────────────── -->
       @if (showModal()) {
-        <div class="modal-overlay" (click)="closeModal()">
+        <div class="overlay" (click)="closeModal()">
           <div class="modal" (click)="$event.stopPropagation()">
-            <div class="modal-header">
-              <h3>{{ editingPost() ? 'Sửa bài' : 'Đăng bài mới' }}</h3>
-              <button class="btn-icon" (click)="closeModal()">✕</button>
+            <div class="modal-hd">
+              <h3>
+                {{
+                  editingPost()
+                    ? 'Chỉnh sửa'
+                    : formType() === 'TEXT'
+                      ? '✏️ Bài viết mới'
+                      : '📷 Album mới'
+                }}
+              </h3>
+              <button class="act-btn" (click)="closeModal()">✕</button>
             </div>
 
-            <!-- Type selector -->
-            @if (!editingPost()) {
-              <div class="type-tabs">
-                <button
-                  [class.active]="formType() === 'TEXT'"
-                  (click)="formType.set('TEXT')"
-                >
-                  📝 Bài viết
-                </button>
-                <button
-                  [class.active]="formType() === 'ALBUM'"
-                  (click)="formType.set('ALBUM')"
-                >
-                  🖼️ Album ảnh
-                </button>
+            <div class="modal-body">
+              <!-- Tiêu đề -->
+              <div class="fg">
+                <label>Tiêu đề</label>
+                <input
+                  class="fi"
+                  [(ngModel)]="formTitle"
+                  [placeholder]="
+                    formType() === 'TEXT'
+                      ? 'Tiêu đề bài viết...'
+                      : 'Tên album...'
+                  "
+                />
               </div>
-            }
 
-            <!-- Title -->
-            <div class="form-group">
-              <label
-                >Tiêu đề <span style="color:#475569">(tuỳ chọn)</span></label
-              >
-              <input
-                class="form-input"
-                [(ngModel)]="formTitle"
-                placeholder="Nhập tiêu đề bài viết..."
-              />
-            </div>
-
-            <!-- TEXT: CKEditor toolbar + textarea -->
-            @if (formType() === 'TEXT') {
-              <div class="form-group">
-                <label>Nội dung</label>
-                <div class="ck-toolbar">
-                  <button type="button" (click)="ckCmd('bold')" title="Bold">
-                    <b>B</b>
-                  </button>
-                  <button
-                    type="button"
-                    (click)="ckCmd('italic')"
-                    title="Italic"
-                  >
-                    <i>I</i>
-                  </button>
-                  <button
-                    type="button"
-                    (click)="ckCmd('underline')"
-                    title="Underline"
-                  >
-                    <u>U</u>
-                  </button>
-                  <span class="ck-sep"></span>
-                  <button
-                    type="button"
-                    (click)="ckCmd('insertUnorderedList')"
-                    title="Bullet list"
-                  >
-                    ≡
-                  </button>
-                  <button
-                    type="button"
-                    (click)="ckCmd('insertOrderedList')"
-                    title="Numbered list"
-                  >
-                    1.
-                  </button>
-                  <span class="ck-sep"></span>
-                  <button
-                    type="button"
-                    (click)="ckCmd('justifyLeft')"
-                    title="Left"
-                  >
-                    ⇤
-                  </button>
-                  <button
-                    type="button"
-                    (click)="ckCmd('justifyCenter')"
-                    title="Center"
-                  >
-                    ↔
-                  </button>
-                  <button
-                    type="button"
-                    (click)="ckCmd('justifyRight')"
-                    title="Right"
-                  >
-                    ⇥
-                  </button>
-                  <span class="ck-sep"></span>
-                  <select
-                    class="ck-select"
-                    (change)="ckFontSize($any($event.target).value)"
-                  >
-                    <option value="">Cỡ chữ</option>
-                    <option value="1">Nhỏ</option>
-                    <option value="3">Thường</option>
-                    <option value="5">Lớn</option>
-                    <option value="7">Rất lớn</option>
-                  </select>
+              <!-- CKEditor (TEXT) — dùng @ckeditor/ckeditor5-angular -->
+              @if (formType() === 'TEXT') {
+                <div class="fg">
+                  <label>Nội dung</label>
+                  <app-ck-editor
+                    [(ngModel)]="ckContent"
+                    name="ckContent"
+                    placeholder="Nhập nội dung bài viết..."
+                  />
                 </div>
-                <div
-                  #editor
-                  class="ck-editor"
-                  contenteditable="true"
-                  (input)="onEditorInput($event)"
-                  [innerHTML]="editorHtml"
-                ></div>
-              </div>
-            }
+              }
 
-            <!-- ALBUM: image URL inputs -->
-            @if (formType() === 'ALBUM') {
-              <div class="form-group">
-                <label>Ảnh <span style="color:#475569">(URL)</span></label>
-                <div class="photo-inputs">
-                  @for (photo of formPhotos(); track $index) {
-                    <div class="photo-input-row">
-                      <input
-                        class="form-input"
-                        [ngModel]="photo.url"
-                        (ngModelChange)="updatePhoto($index, 'url', $event)"
-                        placeholder="https://... URL ảnh"
-                      />
-                      <input
-                        class="form-input caption-input"
-                        [ngModel]="photo.caption"
-                        (ngModelChange)="updatePhoto($index, 'caption', $event)"
-                        placeholder="Chú thích (tuỳ chọn)"
-                      />
-                      <button
-                        class="btn-remove-photo"
-                        (click)="removePhoto($index)"
-                      >
-                        ✕
-                      </button>
+              <!-- Album metadata + upload -->
+              @if (formType() === 'ALBUM') {
+                <div class="fg two-col">
+                  <div>
+                    <label>Ngày tổ chức</label>
+                    <input class="fi" type="date" [(ngModel)]="formDate" />
+                  </div>
+                  <div>
+                    <label>Địa điểm</label>
+                    <input
+                      class="fi"
+                      [(ngModel)]="formLocation"
+                      placeholder="Nhà thờ họ, Hà Nội..."
+                    />
+                  </div>
+                </div>
+
+                <div class="fg">
+                  <label
+                    >Ảnh
+                    <span class="lbl-sub"
+                      >(kéo thả hoặc chọn nhiều file — upload Google
+                      Drive)</span
+                    ></label
+                  >
+                  <div
+                    class="drop-zone"
+                    (click)="fileInput.click()"
+                    (dragover)="$event.preventDefault()"
+                    (drop)="onDrop($event)"
+                  >
+                    <input
+                      #fileInput
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      style="display:none"
+                      (change)="onFiles($event)"
+                    />
+                    <div class="dz-icon">☁️</div>
+                    <div class="dz-txt">Kéo thả hoặc click để chọn ảnh</div>
+                    <div class="dz-sub">
+                      JPG · PNG · WEBP — upload thẳng lên Google Drive của bạn
+                    </div>
+                  </div>
+
+                  @if (uploadFiles().length > 0) {
+                    <div class="upload-list">
+                      @for (uf of uploadFiles(); track $index) {
+                        <div
+                          class="ul-row"
+                          [class.ul-done]="uf.done"
+                          [class.ul-busy]="uf.uploading"
+                        >
+                          <img class="ul-thumb" [src]="uf.preview" />
+                          <div class="ul-meta">
+                            <div class="ul-name">{{ uf.file.name }}</div>
+                            <div class="ul-size">
+                              {{ fmtSize(uf.file.size) }}
+                            </div>
+                            @if (uf.error) {
+                              <div class="ul-err">⚠️ {{ uf.error }}</div>
+                            }
+                          </div>
+                          <input
+                            class="fi ul-cap"
+                            [ngModel]="uf.caption"
+                            (ngModelChange)="setCap($index, $event)"
+                            placeholder="Chú thích..."
+                          />
+                          <div class="ul-st">
+                            @if (uf.uploading) {
+                              <span class="spin"></span>
+                            } @else if (uf.done) {
+                              <span class="ul-ok">✓</span>
+                            } @else {
+                              <button
+                                class="act-btn del"
+                                (click)="rmFile($index)"
+                              >
+                                ✕
+                              </button>
+                            }
+                          </div>
+                        </div>
+                      }
+                    </div>
+
+                    <div class="upload-bar">
+                      @if (!allDone()) {
+                        <button
+                          class="up-btn"
+                          (click)="uploadAll()"
+                          [disabled]="uploading()"
+                        >
+                          @if (uploading()) {
+                            <span class="spin"></span> Đang upload...
+                          } @else {
+                            ☁️ Upload {{ pendingCount() }} ảnh lên Drive
+                          }
+                        </button>
+                      } @else {
+                        <div class="up-done">
+                          ✅ Đã upload {{ uploadFiles().length }} ảnh thành công
+                        </div>
+                      }
+                      <div class="up-prog">
+                        <div
+                          class="up-prog-fill"
+                          [style.width.%]="
+                            uploadFiles().length
+                              ? (doneCount() / uploadFiles().length) * 100
+                              : 0
+                          "
+                        ></div>
+                      </div>
                     </div>
                   }
-                  <button class="btn-add-photo" (click)="addPhoto()">
-                    + Thêm ảnh
-                  </button>
                 </div>
+              }
+            </div>
 
-                <!-- Preview grid -->
-                @if (validPhotos().length > 0) {
-                  <div
-                    class="photo-grid preview-grid"
-                    [class.single]="validPhotos().length === 1"
-                    [class.double]="validPhotos().length === 2"
-                  >
-                    @for (p of validPhotos(); track $index) {
-                      <div class="photo-item">
-                        <img
-                          [src]="p.url"
-                          [alt]="p.caption || ''"
-                          loading="lazy"
-                          (error)="$any($event.target).style.display = 'none'"
-                        />
-                        @if (p.caption) {
-                          <div class="photo-caption">{{ p.caption }}</div>
-                        }
-                      </div>
-                    }
-                  </div>
-                }
-              </div>
-            }
-
-            <div class="modal-footer">
+            <div class="modal-ft">
               <button class="btn-cancel" (click)="closeModal()">Huỷ</button>
               <button
-                class="btn-submit"
-                (click)="submitPost()"
+                class="btn-post"
+                (click)="submit()"
                 [disabled]="submitting()"
               >
                 {{
@@ -382,7 +488,7 @@ interface Post {
                     ? 'Đang lưu...'
                     : editingPost()
                       ? 'Lưu thay đổi'
-                      : 'Đăng bài'
+                      : 'Đăng'
                 }}
               </button>
             </div>
@@ -390,114 +496,241 @@ interface Post {
         </div>
       }
 
-      <!-- Toast -->
       @if (toast()) {
-        <div class="toast" [class.error]="toastError()">{{ toast() }}</div>
+        <div class="toast" [class.err]="toastErr()">{{ toast() }}</div>
       }
     </div>
   `,
   styles: [
     `
-      .act {
+      /* ── Layout ───────────────────────────────────────────────── */
+      .page {
         display: flex;
-        flex-direction: column;
         height: 100vh;
-        background: #09090f;
+        background: #07080f;
         color: #e2e8f0;
         font-family: 'Segoe UI', sans-serif;
+        overflow: hidden;
       }
-      .act-header {
+
+      /* ── Sidebar ─────────────────────────────────────────────── */
+      .sidebar {
+        width: 220px;
+        flex-shrink: 0;
+        background: #0b0f1c;
+        border-right: 1px solid #111827;
+        display: flex;
+        flex-direction: column;
+        padding: 16px 12px;
+        gap: 6px;
+        overflow-y: auto;
+      }
+      .back-btn {
+        background: none;
+        border: 1px solid #1e293b;
+        color: #64748b;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 12px;
+        cursor: pointer;
+        text-align: left;
+        margin-bottom: 8px;
+      }
+      .back-btn:hover {
+        color: #e2e8f0;
+        border-color: #334155;
+      }
+      .family-name {
+        font-size: 13px;
+        font-weight: 700;
+        color: #f1f5f9;
+        padding: 0 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .sidebar-label {
+        font-size: 10px;
+        color: #334155;
+        padding: 0 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 4px;
+      }
+      .sidebar-divider {
+        height: 1px;
+        background: #111827;
+        margin: 8px 0;
+      }
+
+      .filter-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .filter-btn {
         display: flex;
         align-items: center;
-        gap: 12px;
-        padding: 10px 20px;
-        background: #0c1120;
-        border-bottom: 1px solid #1e293b;
-        flex-shrink: 0;
-      }
-      .act-title {
-        flex: 1;
-      }
-      .act-title h1 {
-        margin: 0;
-        font-size: 15px;
-        font-weight: 700;
-      }
-      .act-sub {
-        font-size: 11px;
-        color: #475569;
-      }
-      .btn-back {
-        padding: 5px 12px;
-        font-size: 12px;
-        background: #141828;
-        border: 1px solid #1e293b;
-        color: #94a3b8;
-        border-radius: 5px;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: none;
+        border: none;
+        color: #64748b;
         cursor: pointer;
+        font-size: 13px;
+        text-align: left;
+        width: 100%;
+        transition:
+          background 0.15s,
+          color 0.15s;
       }
-      .btn-new {
-        padding: 6px 16px;
-        font-size: 12px;
+      .filter-btn:hover {
+        background: #111827;
+        color: #94a3b8;
+      }
+      .filter-btn.active {
+        background: #0f1e38;
+        color: #60a5fa;
         font-weight: 600;
+      }
+      .fi-icon {
+        font-size: 14px;
+        width: 18px;
+        text-align: center;
+      }
+      .fi-count {
+        margin-left: auto;
+        font-size: 11px;
+        background: #1e293b;
+        color: #475569;
+        padding: 1px 7px;
+        border-radius: 10px;
+      }
+      .filter-btn.active .fi-count {
+        background: #1e3a6e;
+        color: #93c5fd;
+      }
+
+      .compose-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 9px 12px;
+        border-radius: 8px;
         background: #1d4ed8;
         border: none;
         color: #fff;
-        border-radius: 6px;
         cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        width: 100%;
+        transition: background 0.15s;
       }
-      .btn-new:hover {
+      .compose-btn:hover {
         background: #2563eb;
       }
+      .compose-btn.album {
+        background: #0f4c2a;
+        color: #4ade80;
+        margin-top: 4px;
+      }
+      .compose-btn.album:hover {
+        background: #166534;
+      }
 
-      .act-body {
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 4px 4px;
+        font-size: 12px;
+        color: #475569;
+      }
+      .stat-row strong {
+        color: #64748b;
+      }
+
+      /* ── Feed ────────────────────────────────────────────────── */
+      .feed-wrap {
         flex: 1;
         overflow-y: auto;
-        padding: 24px;
+        padding: 28px;
+        background: #07080f;
       }
-      .act-empty {
-        text-align: center;
-        padding: 80px 20px;
-        color: #475569;
-        font-size: 14px;
-      }
-
       .feed {
         display: flex;
         flex-direction: column;
         gap: 20px;
-        max-width: 760px;
+        max-width: 740px;
         margin: 0 auto;
       }
 
-      .post-card {
-        background: #0c1120;
-        border: 1px solid #1e293b;
-        border-radius: 12px;
-        overflow: hidden;
-      }
-      .post-header {
+      .spinner-wrap {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px 16px;
-        border-bottom: 1px solid #0f1828;
+        justify-content: center;
+        padding: 80px;
       }
-      .post-author {
+      .big-spinner {
+        width: 36px;
+        height: 36px;
+        border: 3px solid #1e293b;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 100px 20px;
+        color: #334155;
+      }
+      .empty-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+      }
+      .empty-title {
+        font-size: 16px;
+        color: #475569;
+        margin-bottom: 8px;
+      }
+      .empty-hint {
+        font-size: 12px;
+        color: #334155;
+      }
+
+      /* ── Cards ───────────────────────────────────────────────── */
+      .card {
+        background: #0c1120;
+        border: 1px solid #111827;
+        border-radius: 14px;
+        overflow: hidden;
+        transition: border-color 0.2s;
+      }
+      .card:hover {
+        border-color: #1e293b;
+      }
+
+      .card-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        padding: 16px 18px 12px;
+      }
+      .author-row {
         display: flex;
         align-items: center;
         gap: 10px;
+        flex: 1;
+        min-width: 0;
       }
-      .author-avatar {
+      .av {
         width: 36px;
         height: 36px;
         border-radius: 50%;
         object-fit: cover;
+        flex-shrink: 0;
       }
-      .author-fallback {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
+      .av-fb {
         background: #1e3a6e;
         color: #60a5fa;
         display: flex;
@@ -506,177 +739,201 @@ interface Post {
         font-size: 13px;
         font-weight: 700;
       }
+      .author-info {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
       .author-name {
         font-size: 13px;
         font-weight: 600;
-        color: #e2e8f0;
+        color: #f1f5f9;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
-      .post-date {
+      .post-time {
         font-size: 11px;
-        color: #475569;
+        color: #334155;
       }
-      .post-actions {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .post-type-badge {
+      .type-chip {
         font-size: 10px;
-        padding: 2px 8px;
-        border-radius: 8px;
-        background: #0f1828;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 20px;
+        flex-shrink: 0;
+        margin-left: 8px;
+      }
+      .text-chip {
+        background: #0f1e38;
         color: #60a5fa;
-        font-weight: 600;
       }
-      .post-type-badge.album {
-        background: #0f1a0a;
-        color: #22c55e;
+      .album-chip {
+        background: #0a1a0e;
+        color: #4ade80;
       }
-      .btn-icon {
+
+      .card-actions {
+        display: flex;
+        gap: 4px;
+        flex-shrink: 0;
+      }
+      .act-btn {
         background: none;
         border: none;
-        cursor: pointer;
         font-size: 14px;
+        cursor: pointer;
         padding: 4px 6px;
-        border-radius: 4px;
-        opacity: 0.6;
+        border-radius: 5px;
+        opacity: 0.5;
+        color: #e2e8f0;
       }
-      .btn-icon:hover {
+      .act-btn:hover {
         opacity: 1;
         background: #1e293b;
       }
-      .btn-icon.danger:hover {
+      .act-btn.del:hover {
         background: #2d0a0a;
+        color: #ef4444;
       }
 
+      /* TEXT card */
       .post-title {
-        margin: 0;
-        padding: 14px 16px 0;
-        font-size: 16px;
+        margin: 0 18px 8px;
+        font-size: 17px;
         font-weight: 700;
-        color: #f1f5f9;
+        color: #f8fafc;
+        line-height: 1.4;
       }
-      .post-content {
-        padding: 14px 16px;
+      .post-body {
+        padding: 0 18px 18px;
         font-size: 14px;
-        line-height: 1.7;
-        color: #cbd5e1;
-      }
-      .post-content :global(b),
-      .post-content :global(strong) {
-        color: #e2e8f0;
-      }
-      .post-content :global(ul),
-      .post-content :global(ol) {
-        padding-left: 20px;
+        line-height: 1.78;
+        color: #94a3b8;
       }
 
-      /* ck-content reset */
-      .ck-content {
-        color: #cbd5e1;
-        font-size: 14px;
-        line-height: 1.7;
-      }
-      .ck-content b,
-      .ck-content strong {
+      /* CKEditor output styles */
+      .ck-out b,
+      .ck-out strong {
         color: #e2e8f0;
       }
-      .ck-content ul,
-      .ck-content ol {
-        padding-left: 20px;
+      .ck-out h1,
+      .ck-out h2,
+      .ck-out h3 {
+        color: #f1f5f9;
+        margin: 14px 0 6px;
+      }
+      .ck-out ul,
+      .ck-out ol {
+        padding-left: 22px;
         margin: 8px 0;
       }
-      .ck-content h1,
-      .ck-content h2,
-      .ck-content h3 {
-        color: #f1f5f9;
-        margin: 12px 0 6px;
+      .ck-out a {
+        color: #60a5fa;
+      }
+      .ck-out blockquote {
+        border-left: 3px solid #1e3a6e;
+        margin: 10px 0;
+        padding: 4px 14px;
+        color: #64748b;
+      }
+      .ck-out table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 10px 0;
+      }
+      .ck-out td,
+      .ck-out th {
+        border: 1px solid #1e293b;
+        padding: 7px 12px;
+        font-size: 13px;
+      }
+      .ck-out p {
+        margin: 6px 0;
       }
 
-      /* Photo grid — CSS grid autofill minmax */
-      .photo-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-        gap: 4px;
-        padding: 0 0 4px;
+      /* ALBUM card */
+      .album-meta-row {
+        padding: 0 18px 12px;
       }
-      .photo-grid.single {
-        grid-template-columns: 1fr;
+      .album-chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 6px;
       }
-      .photo-grid.double {
-        grid-template-columns: 1fr 1fr;
+      .meta-chip {
+        font-size: 11px;
+        color: #475569;
+        background: #0c1828;
+        border: 1px solid #1e293b;
+        border-radius: 12px;
+        padding: 2px 10px;
       }
-      .photo-item {
-        position: relative;
+
+      /* Masonry */
+      .masonry {
+        padding: 0 4px 16px;
+        columns: 4 120px;
+        column-gap: 4px;
+      }
+      .m-item {
+        break-inside: avoid;
+        margin-bottom: 4px;
+        border-radius: 6px;
         overflow: hidden;
-        aspect-ratio: 1;
-        cursor: pointer;
+        position: relative;
+        cursor: zoom-in;
         background: #060d1a;
       }
-      .photo-item img {
+      .m-item img {
         width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transition: transform 0.2s;
+        height: auto;
+        display: block;
+        transition: transform 0.25s;
       }
-      .photo-item:hover img {
+      .m-item:hover img {
         transform: scale(1.04);
       }
-      .photo-caption {
+      .m-cap {
         position: absolute;
         bottom: 0;
         left: 0;
         right: 0;
-        background: rgba(0, 0, 0, 0.65);
+        background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
         color: #e2e8f0;
         font-size: 10px;
-        padding: 4px 8px;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        overflow: hidden;
+        padding: 16px 8px 5px;
       }
 
-      /* Preview grid in modal */
-      .preview-grid {
-        margin-top: 12px;
-        border-radius: 8px;
-        overflow: hidden;
-      }
-      .preview-grid .photo-item {
-        cursor: default;
-      }
-      .preview-grid .photo-item:hover img {
-        transform: none;
-      }
-
-      /* Lightbox */
-      .lightbox {
+      /* ── Lightbox ─────────────────────────────────────────────── */
+      .lb {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.92);
+        background: rgba(0, 0, 0, 0.94);
         z-index: 1000;
         display: flex;
         align-items: center;
         justify-content: center;
       }
       .lb-img {
-        max-width: 90vw;
-        max-height: 85vh;
+        max-width: 92vw;
+        max-height: 88vh;
         object-fit: contain;
         border-radius: 4px;
       }
-      .lb-close {
+      .lb-x {
         position: absolute;
-        top: 16px;
-        right: 20px;
+        top: 18px;
+        right: 22px;
         background: none;
         border: none;
-        color: #e2e8f0;
+        color: #fff;
         font-size: 24px;
         cursor: pointer;
-        opacity: 0.7;
+        opacity: 0.6;
       }
-      .lb-close:hover {
+      .lb-x:hover {
         opacity: 1;
       }
       .lb-nav {
@@ -686,46 +943,49 @@ interface Post {
         background: rgba(255, 255, 255, 0.1);
         border: none;
         color: #fff;
-        font-size: 32px;
+        font-size: 36px;
         cursor: pointer;
-        padding: 12px 18px;
+        padding: 10px 16px;
         border-radius: 8px;
+      }
+      .lb-l {
+        left: 16px;
+      }
+      .lb-r {
+        right: 16px;
       }
       .lb-nav:hover {
         background: rgba(255, 255, 255, 0.2);
       }
-      .lb-prev {
-        left: 16px;
-      }
-      .lb-next {
-        right: 16px;
-      }
-      .lb-caption {
+      .lb-cap {
         position: absolute;
-        bottom: 16px;
+        bottom: 20px;
         left: 50%;
         transform: translateX(-50%);
         color: #e2e8f0;
         font-size: 13px;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 6px 16px;
-        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 6px 18px;
+        border-radius: 20px;
+        max-width: 80vw;
+        text-overflow: ellipsis;
+        overflow: hidden;
         white-space: nowrap;
       }
-      .lb-counter {
+      .lb-n {
         position: absolute;
-        top: 16px;
+        top: 20px;
         left: 50%;
         transform: translateX(-50%);
-        color: #94a3b8;
+        color: #64748b;
         font-size: 12px;
       }
 
-      /* Modal */
-      .modal-overlay {
+      /* ── Modal ───────────────────────────────────────────────── */
+      .overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.75);
         z-index: 200;
         display: flex;
         align-items: center;
@@ -735,236 +995,316 @@ interface Post {
       .modal {
         background: #0c1120;
         border: 1px solid #1e293b;
-        border-radius: 14px;
+        border-radius: 16px;
         width: 100%;
-        max-width: 640px;
-        max-height: 90vh;
+        max-width: 680px;
+        max-height: 92vh;
         display: flex;
         flex-direction: column;
-        overflow: hidden;
       }
-      .modal-header {
+      .modal-hd {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 16px 20px;
-        border-bottom: 1px solid #1e293b;
+        padding: 18px 22px;
+        border-bottom: 1px solid #111827;
         flex-shrink: 0;
       }
-      .modal-header h3 {
+      .modal-hd h3 {
         margin: 0;
         font-size: 15px;
         font-weight: 700;
       }
-      .modal-footer {
+      .modal-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 18px 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .modal-ft {
         display: flex;
         justify-content: flex-end;
         gap: 10px;
-        padding: 14px 20px;
-        border-top: 1px solid #1e293b;
+        padding: 14px 22px;
+        border-top: 1px solid #111827;
         flex-shrink: 0;
       }
       .btn-cancel {
-        padding: 7px 18px;
+        padding: 8px 20px;
         background: none;
-        border: 1px solid #334155;
-        color: #94a3b8;
-        border-radius: 7px;
+        border: 1px solid #1e293b;
+        color: #64748b;
+        border-radius: 8px;
         cursor: pointer;
         font-size: 13px;
       }
-      .btn-submit {
-        padding: 7px 22px;
+      .btn-post {
+        padding: 8px 24px;
         background: #1d4ed8;
         border: none;
         color: #fff;
-        border-radius: 7px;
+        border-radius: 8px;
         cursor: pointer;
         font-size: 13px;
         font-weight: 600;
       }
-      .btn-submit:disabled {
-        opacity: 0.5;
+      .btn-post:disabled {
+        opacity: 0.4;
         cursor: not-allowed;
       }
-
-      /* Modal scrollable content */
-      .modal > *:not(.modal-header):not(.modal-footer):not(.type-tabs) {
-        overflow-y: auto;
+      .btn-cancel:hover {
+        border-color: #334155;
+        color: #94a3b8;
       }
-      .type-tabs {
+      .btn-post:not(:disabled):hover {
+        background: #2563eb;
+      }
+
+      /* ── Form ────────────────────────────────────────────────── */
+      .fg {
         display: flex;
-        gap: 0;
-        border-bottom: 1px solid #1e293b;
-        flex-shrink: 0;
+        flex-direction: column;
+        gap: 6px;
       }
-      .type-tabs button {
-        flex: 1;
-        padding: 10px;
-        font-size: 13px;
-        background: none;
-        border: none;
-        color: #64748b;
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
-      }
-      .type-tabs button.active {
-        color: #60a5fa;
-        border-bottom-color: #3b82f6;
-      }
-
-      .form-group {
-        padding: 14px 20px 0;
-      }
-      .form-group label {
-        display: block;
-        font-size: 11px;
-        color: #64748b;
+      .fg label {
+        font-size: 10px;
+        color: #475569;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 6px;
+        letter-spacing: 0.07em;
+        font-weight: 600;
       }
-      .form-input {
-        width: 100%;
+      .fi {
         background: #060d1a;
         border: 1px solid #1e293b;
         color: #e2e8f0;
-        border-radius: 7px;
-        padding: 8px 12px;
+        border-radius: 8px;
+        padding: 9px 13px;
         font-size: 13px;
+        width: 100%;
         box-sizing: border-box;
       }
-      .form-input:focus {
+      .fi:focus {
         outline: none;
         border-color: #3b82f6;
       }
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .lbl-sub {
+        font-size: 10px;
+        color: #334155;
+        text-transform: none;
+        font-weight: normal;
+        letter-spacing: 0;
+      }
+      .ck-loading {
+        padding: 12px;
+        color: #475569;
+        font-size: 12px;
+        background: #060d1a;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+      }
 
-      /* CKEditor-like toolbar */
-      .ck-toolbar {
+      /* CKEditor styles handled inside ck-editor.component.ts */
+
+      /* ── Upload ──────────────────────────────────────────────── */
+      .drop-zone {
+        border: 2px dashed #1e293b;
+        border-radius: 10px;
+        padding: 30px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .drop-zone:hover {
+        border-color: #3b82f6;
+        background: #060d1a;
+      }
+      .dz-icon {
+        font-size: 30px;
+        margin-bottom: 10px;
+      }
+      .dz-txt {
+        font-size: 14px;
+        color: #64748b;
+        margin-bottom: 4px;
+      }
+      .dz-sub {
+        font-size: 11px;
+        color: #334155;
+      }
+
+      .upload-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .ul-row {
         display: flex;
         align-items: center;
-        gap: 2px;
-        padding: 6px 8px;
+        gap: 10px;
         background: #060d1a;
         border: 1px solid #1e293b;
-        border-bottom: none;
-        border-radius: 7px 7px 0 0;
-        flex-wrap: wrap;
+        border-radius: 8px;
+        padding: 8px 12px;
+        transition: border-color 0.2s;
       }
-      .ck-toolbar button {
-        background: none;
-        border: none;
-        color: #94a3b8;
-        padding: 4px 8px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 13px;
-        min-width: 28px;
+      .ul-done {
+        border-color: #166534;
       }
-      .ck-toolbar button:hover {
-        background: #1e293b;
-        color: #e2e8f0;
+      .ul-busy {
+        opacity: 0.7;
       }
-      .ck-sep {
-        width: 1px;
-        height: 16px;
-        background: #1e293b;
-        margin: 0 4px;
+      .ul-thumb {
+        width: 42px;
+        height: 42px;
+        border-radius: 6px;
+        object-fit: cover;
+        flex-shrink: 0;
       }
-      .ck-select {
-        background: #060d1a;
-        border: 1px solid #1e293b;
-        color: #94a3b8;
-        border-radius: 4px;
-        padding: 3px 6px;
+      .ul-meta {
+        flex: 0 0 130px;
+        min-width: 0;
+      }
+      .ul-name {
         font-size: 11px;
-        cursor: pointer;
+        color: #64748b;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
-      .ck-editor {
-        min-height: 160px;
-        background: #060d1a;
-        border: 1px solid #1e293b;
-        border-radius: 0 0 7px 7px;
-        padding: 12px;
-        font-size: 14px;
-        line-height: 1.7;
-        color: #e2e8f0;
-        outline: none;
-        overflow-y: auto;
+      .ul-size {
+        font-size: 10px;
+        color: #334155;
       }
-      .ck-editor:focus {
-        border-color: #3b82f6;
+      .ul-err {
+        font-size: 10px;
+        color: #ef4444;
+        margin-top: 2px;
+      }
+      .ul-cap {
+        flex: 1;
+        font-size: 12px;
+        padding: 5px 8px !important;
+      }
+      .ul-st {
+        flex-shrink: 0;
+        width: 28px;
+        text-align: center;
+      }
+      .ul-ok {
+        color: #22c55e;
+        font-size: 16px;
+        font-weight: 700;
       }
 
-      /* Photo inputs */
-      .photo-inputs {
+      .upload-bar {
+        margin-top: 10px;
         display: flex;
         flex-direction: column;
         gap: 8px;
       }
-      .photo-input-row {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-      }
-      .photo-input-row .form-input {
-        margin: 0;
-      }
-      .caption-input {
-        max-width: 200px;
-      }
-      .btn-remove-photo {
-        background: none;
-        border: 1px solid #334155;
-        color: #ef4444;
-        border-radius: 5px;
-        padding: 5px 10px;
-        cursor: pointer;
-        font-size: 12px;
-        flex-shrink: 0;
-      }
-      .btn-add-photo {
-        padding: 7px 16px;
-        background: #060d1a;
-        border: 1px dashed #334155;
-        color: #64748b;
-        border-radius: 7px;
-        cursor: pointer;
-        font-size: 12px;
+      .up-btn {
         width: 100%;
-        margin-top: 4px;
-      }
-      .btn-add-photo:hover {
-        border-color: #60a5fa;
+        padding: 11px;
+        background: #0f1e38;
+        border: 1px solid #1d4ed8;
         color: #60a5fa;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .up-btn:hover:not(:disabled) {
+        background: #1d4ed8;
+        color: #fff;
+      }
+      .up-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .up-done {
+        text-align: center;
+        color: #22c55e;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px;
+      }
+      .up-prog {
+        height: 3px;
+        background: #1e293b;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .up-prog-fill {
+        height: 100%;
+        background: #3b82f6;
+        border-radius: 2px;
+        transition: width 0.4s;
       }
 
+      .spin {
+        display: inline-block;
+        width: 13px;
+        height: 13px;
+        border: 2px solid #334155;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ── Toast ───────────────────────────────────────────────── */
       .toast {
         position: fixed;
         bottom: 24px;
         left: 50%;
         transform: translateX(-50%);
-        background: #22c55e;
+        background: #16a34a;
         color: #fff;
         padding: 10px 24px;
-        border-radius: 8px;
+        border-radius: 20px;
         font-size: 13px;
         font-weight: 600;
         z-index: 999;
+        animation: up 0.2s;
+        white-space: nowrap;
       }
-      .toast.error {
-        background: #ef4444;
+      .toast.err {
+        background: #dc2626;
+      }
+      @keyframes up {
+        from {
+          opacity: 0;
+          transform: translateX(-50%) translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
       }
     `,
   ],
 })
-export class ActivitiesPage implements OnInit {
+export class ActivitiesPage implements OnInit, OnDestroy {
   private http = inject(HttpClient);
   private route = inject(ActivatedRoute);
   private router = inject(Router);
-  private sanitizer = inject(DomSanitizer);
-
-  @ViewChild('editor') editorRef?: ElementRef<HTMLDivElement>;
+  private san = inject(DomSanitizer);
 
   familyId = '';
   isPublicView = false;
@@ -975,44 +1315,75 @@ export class ActivitiesPage implements OnInit {
   myUserId = signal('');
   myRole = signal<'OWNER' | 'EDITOR' | 'VIEWER' | null>(null);
 
-  // Modal state
+  filter = signal<Filter>('all');
+
+  // Modal
   showModal = signal(false);
   editingPost = signal<Post | null>(null);
   formType = signal<PostType>('TEXT');
   formTitle = '';
-  formPhotos = signal<Photo[]>([{ url: '', caption: '' }]);
-  editorHtml = '';
+  formDate = '';
+  formLocation = '';
+  uploadFiles = signal<UploadFile[]>([]);
+  uploading = signal(false);
   submitting = signal(false);
+  ckContent = ''; // bound to <app-ck-editor [(ngModel)]>
 
   // Lightbox
-  lightbox = signal<Post['photos'] | null>(null);
-  lbIndex = signal(0);
+  lbPhotos = signal<Post['photos'] | null>(null);
+  lbI = signal(0);
 
   // Toast
   toast = signal('');
-  toastError = signal(false);
+  toastErr = signal(false);
 
+  // Computed
+  textCount = computed(
+    () => this.posts().filter((p) => p.type === 'TEXT').length,
+  );
+  albumCount = computed(
+    () => this.posts().filter((p) => p.type === 'ALBUM').length,
+  );
+  totalPhotos = computed(() =>
+    this.posts()
+      .filter((p) => p.type === 'ALBUM')
+      .reduce((s, a) => s + a.photos.length, 0),
+  );
   canPost = computed(
     () => this.myRole() === 'OWNER' || this.myRole() === 'EDITOR',
   );
-
-  validPhotos = computed(() => this.formPhotos().filter((p) => p.url.trim()));
+  pendingCount = computed(
+    () => this.uploadFiles().filter((f) => !f.done).length,
+  );
+  doneCount = computed(() => this.uploadFiles().filter((f) => f.done).length);
+  allDone = computed(
+    () =>
+      this.uploadFiles().length > 0 && this.uploadFiles().every((f) => f.done),
+  );
+  filtered = computed(() => {
+    const f = this.filter();
+    if (f === 'text') return this.posts().filter((p) => p.type === 'TEXT');
+    if (f === 'album') return this.posts().filter((p) => p.type === 'ALBUM');
+    return this.posts();
+  });
 
   canManage(post: Post) {
     return this.myRole() === 'OWNER' || post.authorId === this.myUserId();
   }
 
+  // ── Lifecycle ─────────────────────────────────────────────────
+
   async ngOnInit() {
     this.familyId = this.route.snapshot.params['id'];
     this.isPublicView = this.route.snapshot.data?.['public'] === true;
-    await Promise.all([
-      this.loadFamilyName(),
-      this.loadRole(),
-      this.loadPosts(),
-    ]);
+    await Promise.all([this.loadName(), this.loadRole(), this.loadPosts()]);
   }
 
-  private async loadFamilyName() {
+  ngOnDestroy() {}
+
+  // ── Data ──────────────────────────────────────────────────────
+
+  private async loadName() {
     try {
       const r: any = await this.http
         .get(`${environment.apiUrl}/api/families/${this.familyId}`)
@@ -1046,87 +1417,165 @@ export class ActivitiesPage implements OnInit {
     }
   }
 
-  openCreate() {
+  goBack() {
+    if (this.isPublicView) this.router.navigate(['/share', this.familyId]);
+    else this.router.navigate(['/families', this.familyId]);
+  }
+
+  // ── Modal ─────────────────────────────────────────────────────
+
+  openCreate(type: PostType) {
     this.editingPost.set(null);
-    this.formType.set('TEXT');
+    this.formType.set(type);
     this.formTitle = '';
-    this.editorHtml = '';
-    this.formPhotos.set([{ url: '', caption: '' }]);
+    this.formDate = '';
+    this.formLocation = '';
+    this.uploadFiles.set([]);
+    this.ckContent = '';
     this.showModal.set(true);
-    setTimeout(() => {
-      if (this.editorRef) this.editorRef.nativeElement.innerHTML = '';
-    }, 50);
+    // Sync filter
+    this.filter.set(type === 'TEXT' ? 'text' : 'album');
   }
 
   editPost(post: Post) {
     this.editingPost.set(post);
     this.formType.set(post.type);
     this.formTitle = post.title ?? '';
-    this.editorHtml = post.content ?? '';
-    this.formPhotos.set(
-      post.photos.length
-        ? post.photos.map((p) => ({ url: p.url, caption: p.caption ?? '' }))
-        : [{ url: '', caption: '' }],
-    );
+    this.formDate = post.albumDate?.slice(0, 10) ?? '';
+    this.formLocation = post.albumLocation ?? '';
+    this.uploadFiles.set([]);
+    this.ckContent = post.type === 'TEXT' ? (post.content ?? '') : '';
     this.showModal.set(true);
-    setTimeout(() => {
-      if (this.editorRef)
-        this.editorRef.nativeElement.innerHTML = post.content ?? '';
-    }, 50);
   }
 
   closeModal() {
     this.showModal.set(false);
+    this.ckContent = '';
+    this.uploadFiles.set([]);
   }
 
-  // CKEditor commands via execCommand
-  ckCmd(cmd: string) {
-    document.execCommand(cmd, false);
-    this.editorRef?.nativeElement.focus();
+  // ── Upload ────────────────────────────────────────────────────
+
+  onFiles(e: Event) {
+    const files = Array.from((e.target as HTMLInputElement).files ?? []);
+    this.addFiles(files);
   }
 
-  ckFontSize(size: string) {
-    if (!size) return;
-    document.execCommand('fontSize', false, size);
-    this.editorRef?.nativeElement.focus();
-  }
-
-  onEditorInput(e: Event) {
-    this.editorHtml = (e.target as HTMLDivElement).innerHTML;
-  }
-
-  addPhoto() {
-    this.formPhotos.update((p) => [...p, { url: '', caption: '' }]);
-  }
-  removePhoto(i: number) {
-    this.formPhotos.update((p) => p.filter((_, idx) => idx !== i));
-  }
-  updatePhoto(i: number, field: 'url' | 'caption', val: string) {
-    this.formPhotos.update((p) =>
-      p.map((ph, idx) => (idx === i ? { ...ph, [field]: val } : ph)),
+  onDrop(e: DragEvent) {
+    e.preventDefault();
+    this.addFiles(
+      Array.from(e.dataTransfer?.files ?? []).filter((f) =>
+        f.type.startsWith('image/'),
+      ),
     );
   }
 
-  async submitPost() {
-    const content = this.editorRef?.nativeElement.innerHTML ?? this.editorHtml;
-    const type = this.editingPost()
-      ? this.editingPost()!.type
-      : this.formType();
-    const photos = this.validPhotos();
+  private addFiles(files: File[]) {
+    const items: UploadFile[] = files.map((f) => ({
+      file: f,
+      preview: URL.createObjectURL(f),
+      caption: '',
+      uploading: false,
+      done: false,
+      error: '',
+    }));
+    this.uploadFiles.update((l) => [...l, ...items]);
+  }
 
-    if (
-      type === 'TEXT' &&
-      !content
-        .trim()
-        .replace(/<[^>]*>/g, '')
-        .trim() &&
-      !this.formTitle.trim()
-    ) {
-      this.showToast('Vui lòng nhập nội dung hoặc tiêu đề', true);
+  rmFile(i: number) {
+    this.uploadFiles.update((l) => l.filter((_, idx) => idx !== i));
+  }
+  setCap(i: number, v: string) {
+    this.uploadFiles.update((l) =>
+      l.map((f, idx) => (idx === i ? { ...f, caption: v } : f)),
+    );
+  }
+
+  async uploadAll() {
+    const pending = this.uploadFiles().filter((f) => !f.done);
+    if (!pending.length) return;
+    this.uploading.set(true);
+
+    const BATCH = 3;
+    for (let i = 0; i < this.uploadFiles().length; i += BATCH) {
+      const batch = this.uploadFiles()
+        .slice(i, i + BATCH)
+        .filter((f) => !f.done);
+      if (!batch.length) continue;
+
+      this.uploadFiles.update((l) =>
+        l.map((f) => (batch.includes(f) ? { ...f, uploading: true } : f)),
+      );
+
+      const filesData = await Promise.all(
+        batch.map(async (uf) => {
+          const ab = await uf.file.arrayBuffer();
+          const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
+          const dim = await this.getDim(uf.preview);
+          return {
+            name: uf.file.name,
+            mimeType: uf.file.type,
+            base64: b64,
+            ...dim,
+          };
+        }),
+      );
+
+      try {
+        const r: any = await this.http
+          .post(`${environment.apiUrl}/api/upload`, {
+            familyId: this.familyId,
+            files: filesData,
+          })
+          .toPromise();
+
+        this.uploadFiles.update((l) =>
+          l.map((f) => {
+            if (!batch.includes(f)) return f;
+            const match = r.data.find((d: any) => d.name === f.file.name);
+            return match
+              ? { ...f, uploading: false, done: true, preview: match.url }
+              : { ...f, uploading: false, error: 'Thất bại' };
+          }),
+        );
+      } catch (err: any) {
+        const msg = err.error?.error ?? 'Lỗi upload';
+        this.uploadFiles.update((l) =>
+          l.map((f) =>
+            batch.includes(f) ? { ...f, uploading: false, error: msg } : f,
+          ),
+        );
+        // Nếu lỗi Drive chưa kết nối → dừng hẳn
+        if (msg.includes('Chưa kết nối') || msg.includes('Drive')) {
+          this.showToast(msg, true);
+          break;
+        }
+      }
+    }
+    this.uploading.set(false);
+  }
+
+  private getDim(src: string): Promise<{ width: number; height: number }> {
+    return new Promise((res) => {
+      const img = new Image();
+      img.onload = () =>
+        res({ width: img.naturalWidth, height: img.naturalHeight });
+      img.onerror = () => res({ width: 0, height: 0 });
+      img.src = src;
+    });
+  }
+
+  // ── Submit ────────────────────────────────────────────────────
+
+  async submit() {
+    const isAlbum = this.formType() === 'ALBUM';
+
+    if (!isAlbum && !this.ckContent.trim() && !this.formTitle.trim()) {
+      this.showToast('Vui lòng nhập tiêu đề hoặc nội dung', true);
       return;
     }
-    if (type === 'ALBUM' && photos.length === 0) {
-      this.showToast('Vui lòng thêm ít nhất một ảnh', true);
+    if (isAlbum && !this.editingPost() && !this.allDone()) {
+      this.showToast('Hãy upload ảnh trước khi đăng', true);
       return;
     }
 
@@ -1134,10 +1583,20 @@ export class ActivitiesPage implements OnInit {
     try {
       const body: any = {
         familyId: this.familyId,
-        type,
+        type: isAlbum ? 'ALBUM' : 'TEXT',
         title: this.formTitle || null,
-        ...(type === 'TEXT' && { content }),
-        ...(type === 'ALBUM' && { photos }),
+        ...(!isAlbum && { content: this.ckContent }),
+        ...(isAlbum && {
+          albumDate: this.formDate || null,
+          albumLocation: this.formLocation || null,
+          photos: this.uploadFiles()
+            .filter((f) => f.done)
+            .map((f, i) => ({
+              url: f.preview,
+              caption: f.caption || null,
+              order: i,
+            })),
+        }),
       };
 
       if (this.editingPost()) {
@@ -1147,59 +1606,64 @@ export class ActivitiesPage implements OnInit {
             body,
           )
           .toPromise();
-        this.posts.update((list) =>
-          list.map((p) => (p.id === r.data.id ? r.data : p)),
+        this.posts.update((l) =>
+          l.map((p) => (p.id === r.data.id ? r.data : p)),
         );
-        this.showToast('Đã cập nhật bài');
+        this.showToast('Đã cập nhật');
       } else {
         const r: any = await this.http
           .post(`${environment.apiUrl}/api/post`, body)
           .toPromise();
-        this.posts.update((list) => [r.data, ...list]);
-        this.showToast('Đã đăng bài thành công');
+        this.posts.update((l) => [r.data, ...l]);
+        this.showToast('Đã đăng thành công');
       }
       this.closeModal();
     } catch {
-      this.showToast('Lỗi khi lưu bài', true);
+      this.showToast('Lỗi khi lưu', true);
     } finally {
       this.submitting.set(false);
     }
   }
 
   async deletePost(post: Post) {
-    if (!confirm(`Xoá bài "${post.title || 'này'}"?`)) return;
+    if (!confirm(`Xoá "${post.title || 'bài này'}"?`)) return;
     try {
       await this.http
         .delete(`${environment.apiUrl}/api/post/${post.id}`)
         .toPromise();
-      this.posts.update((list) => list.filter((p) => p.id !== post.id));
-      this.showToast('Đã xoá bài');
+      this.posts.update((l) => l.filter((p) => p.id !== post.id));
+      this.showToast('Đã xoá');
     } catch {
       this.showToast('Lỗi khi xoá', true);
     }
   }
 
-  openLightbox(photos: Post['photos'], index: number) {
-    this.lightbox.set(photos);
-    this.lbIndex.set(index);
+  // ── Lightbox ──────────────────────────────────────────────────
+
+  openLb(photos: Post['photos'], i: number) {
+    this.lbPhotos.set(photos);
+    this.lbI.set(i);
   }
-  closeLightbox() {
-    this.lightbox.set(null);
+  closeLb() {
+    this.lbPhotos.set(null);
+  }
+  hideImg(e: Event) {
+    (e.target as HTMLElement).closest('.m-item')?.remove();
   }
 
-  sanitize(html: string): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(html);
-  }
+  // ── Helpers ───────────────────────────────────────────────────
 
-  initials(name: string) {
-    return name
+  safe(html: string): SafeHtml {
+    return this.san.bypassSecurityTrustHtml(html);
+  }
+  initials(s: string) {
+    return s
       .split(' ')
       .map((w) => w[0])
       .slice(-2)
       .join('')
       .toUpperCase();
   }
-
   fmtDate(d: string) {
     return new Date(d).toLocaleString('vi-VN', {
       day: '2-digit',
@@ -1209,15 +1673,22 @@ export class ActivitiesPage implements OnInit {
       minute: '2-digit',
     });
   }
-
-  private showToast(msg: string, error = false) {
-    this.toast.set(msg);
-    this.toastError.set(error);
-    setTimeout(() => this.toast.set(''), 3000);
+  fmtDateOnly(d: string) {
+    return new Date(d).toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  }
+  fmtSize(b: number) {
+    return b < 1048576
+      ? `${(b / 1024).toFixed(0)} KB`
+      : `${(b / 1048576).toFixed(1)} MB`;
   }
 
-  goBack() {
-    if (this.isPublicView) this.router.navigate(['/share', this.familyId]);
-    else this.router.navigate(['/families', this.familyId]);
+  private showToast(msg: string, err = false) {
+    this.toast.set(msg);
+    this.toastErr.set(err);
+    setTimeout(() => this.toast.set(''), 3000);
   }
 }

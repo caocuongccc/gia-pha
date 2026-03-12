@@ -388,7 +388,7 @@ export class LoginPage implements OnInit {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const { error } = await this.auth.signUp(email, password);
+      const { error } = await this.auth.signUpWithEmail(email, password);
       if (error) this.error.set(error.message);
       else this.error.set('✅ Kiểm tra email để xác nhận tài khoản!');
     } finally {
@@ -398,7 +398,7 @@ export class LoginPage implements OnInit {
 
   async signUp(email: string, password: string) {
     this.loading.set(true);
-    const { error } = await this.auth.signUp(email, password);
+    const { error } = await this.auth.signUpWithEmail(email, password);
     if (error) this.error.set(error.message);
     else this.error.set(null);
     this.loading.set(false);

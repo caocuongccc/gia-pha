@@ -30,15 +30,18 @@ enum FamilyRole {
 
 // ── User (sync từ Supabase auth.users) ─
 model User {
-  id        String   @id // = Supabase auth.users.id (UUID)
+  id        String   @id
   email     String   @unique
   name      String?
   avatarUrl String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  familyMembers FamilyMember[]
-  posts         Post[]         @relation("UserPosts")
+  familyMembers    FamilyMember[]
+  posts            Post[]                  @relation("UserPosts")
+  connectedDrives  FamilyDriveAccount[]    @relation("DriveConnector")
+  drivePermissions FamilyDrivePermission[] @relation("DrivePermissionUser")
+  driveGranted     FamilyDrivePermission[] @relation("DrivePermissionGranter")
 
   @@map("users")
 }
@@ -60,6 +63,7 @@ model Family {
   scholarships ScholarshipRecord[] @relation("FamilyScholarships")
   fundRecords  FundRecord[]        @relation("FamilyFundRecords")
   posts        Post[]              @relation("FamilyPosts")
+  driveAccount FamilyDriveAccount? @relation("FamilyDrive")
 
   @@map("families")
 }
@@ -239,14 +243,16 @@ enum PostType {
 }
 
 model Post {
-  id        String   @id @default(uuid())
-  familyId  String
-  authorId  String
-  type      PostType
-  title     String?
-  content   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String    @id @default(uuid())
+  familyId      String
+  authorId      String
+  type          PostType
+  title         String?
+  content       String?
+  albumDate     DateTime? // ngày tổ chức (cho ALBUM)
+  albumLocation String? // địa điểm (cho ALBUM)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   family Family      @relation("FamilyPosts", fields: [familyId], references: [id], onDelete: Cascade)
   author User        @relation("UserPosts", fields: [authorId], references: [id])
@@ -256,13 +262,55 @@ model Post {
 }
 
 model PostPhoto {
-  id      String  @id @default(uuid())
-  postId  String
-  url     String
-  caption String?
-  order   Int     @default(0)
+  id          String  @id @default(uuid())
+  postId      String
+  url         String
+  driveFileId String? // Google Drive file ID
+  width       Int?
+  height      Int?
+  caption     String?
+  order       Int     @default(0)
 
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@map("post_photos")
+}
+
+// ── Family Drive Account ────────────────────────────────────────
+// Một Drive dùng chung cho cả gia phả.
+// OWNER kết nối 1 Google account (có thể khác account login),
+// sau đó cấp quyền upload cho từng Editor.
+model FamilyDriveAccount {
+  id           String    @id @default(uuid())
+  familyId     String    @unique
+  connectedBy  String // userId đã kết nối (thường là OWNER)
+  email        String // Google email hiển thị cho user biết
+  folderId     String? // root folder ID trong Drive đó
+  accessToken  String    @db.Text
+  refreshToken String?   @db.Text
+  tokenExpiry  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  family      Family                  @relation("FamilyDrive", fields: [familyId], references: [id], onDelete: Cascade)
+  connector   User                    @relation("DriveConnector", fields: [connectedBy], references: [id])
+  permissions FamilyDrivePermission[]
+
+  @@map("family_drive_accounts")
+}
+
+// Ai được phép dùng Drive account trên để upload
+model FamilyDrivePermission {
+  id             String   @id @default(uuid())
+  driveAccountId String
+  userId         String // Editor được cấp quyền
+  grantedBy      String // OWNER đã cấp
+  createdAt      DateTime @default(now())
+
+  driveAccount FamilyDriveAccount @relation(fields: [driveAccountId], references: [id], onDelete: Cascade)
+  user         User               @relation("DrivePermissionUser", fields: [userId], references: [id])
+  granter      User               @relation("DrivePermissionGranter", fields: [grantedBy], references: [id])
+
+  @@unique([driveAccountId, userId])
+  @@map("family_drive_permissions")
 }

@@ -27,16 +27,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ── GET — danh sách user + role ──────────────────────────────
   if (req.method === 'GET') {
-    const accessList = await prisma.familyMember.findMany({
-      where: { familyId },
-      include: {
-        user: {
-          select: { id: true, email: true, name: true, avatarUrl: true },
+    const [accessList, family] = await Promise.all([
+      prisma.familyMember.findMany({
+        where: { familyId },
+        include: {
+          user: {
+            select: { id: true, email: true, name: true, avatarUrl: true },
+          },
         },
-      },
-      orderBy: { joinedAt: 'asc' },
+        orderBy: { joinedAt: 'asc' },
+      }),
+      prisma.family.findUnique({
+        where: { id: familyId },
+        select: { name: true },
+      }),
+    ]);
+    return res.json({
+      data: accessList,
+      myUserId: user.id,
+      familyName: family?.name ?? '',
     });
-    return res.json({ data: accessList });
   }
 
   // ── PATCH — đổi role ─────────────────────────────────────────
