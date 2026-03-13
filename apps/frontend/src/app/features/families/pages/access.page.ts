@@ -1,28 +1,25 @@
 // apps/frontend/src/app/features/families/pages/access.page.ts
-import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../../environments/environment';
 
 type Role = 'OWNER' | 'EDITOR' | 'VIEWER';
-
 interface Member {
   userId: string;
   role: Role;
   joinedAt: string;
   user: { id: string; email: string; name?: string; avatarUrl?: string };
-  // Drive permission (chỉ có nghĩa khi driveConnected && role !== VIEWER)
   hasDrivePerm?: boolean;
   isDriveConnector?: boolean;
 }
-
 interface DriveStatus {
   connected: boolean;
   account?: { email: string; createdAt: string; connectedBy: string };
   authUrl: string;
 }
-
 const ROLE_LABELS: Record<Role, string> = {
   OWNER: '👑 Owner',
   EDITOR: '✏️ Editor',
@@ -37,66 +34,70 @@ const ROLE_DESC: Record<Role, string> = {
 @Component({
   selector: 'app-access',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="page">
       <header class="hd">
-        <button class="btn-back" (click)="goBack()">← Gia phả</button>
+        <button class="btn-back" (click)="goBack()">←</button>
         <div>
-          <h1 class="hd-title">👥 Phân quyền thành viên</h1>
+          <h1 class="hd-title">👥 Phân quyền</h1>
           <div class="hd-sub">{{ familyName() }}</div>
         </div>
       </header>
 
-      <div class="body">
-        <!-- ── LEFT: Drive card ───────────────────────────────── -->
-        <aside class="drive-col">
-          <div class="drive-card">
-            <div class="dc-hd">
-              <div class="dc-logo">
-                <svg width="20" height="20" viewBox="0 0 87.3 78" fill="none">
-                  <path
-                    d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"
-                    fill="#0066da"
-                  />
-                  <path
-                    d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z"
-                    fill="#00ac47"
-                  />
-                  <path
-                    d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z"
-                    fill="#ea4335"
-                  />
-                  <path
-                    d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"
-                    fill="#00832d"
-                  />
-                  <path
-                    d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"
-                    fill="#2684fc"
-                  />
-                  <path
-                    d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z"
-                    fill="#ffba00"
-                  />
-                </svg>
+      <div class="layout">
+        <!-- ASIDE -->
+        <aside class="aside">
+          <!-- Invite form -->
+          <div class="card">
+            <div class="card-title">➕ Thêm thành viên</div>
+            <p class="card-desc">
+              Nhập email tài khoản đã đăng ký. Họ sẽ được thêm ngay với quyền
+              bạn chọn.
+            </p>
+            <div class="invite-form">
+              <input
+                class="input-email"
+                [(ngModel)]="inviteEmail"
+                placeholder="email@example.com"
+                type="email"
+                (keyup.enter)="addMember()"
+              />
+              <div class="role-tabs">
+                @for (r of roles; track r) {
+                  <button
+                    class="rt-btn"
+                    [class.active]="inviteRole === r"
+                    (click)="inviteRole = r"
+                  >
+                    {{ ROLE_LABELS[r] }}
+                  </button>
+                }
               </div>
-              <div>
-                <div class="dc-title">Google Drive gia phả</div>
-                <div class="dc-sub">
-                  Kết nối để lưu ảnh album — dùng chung cho cả gia phả
-                </div>
-              </div>
+              <div class="rt-desc">{{ ROLE_DESC[inviteRole] }}</div>
+              <button
+                class="btn-invite"
+                [disabled]="adding()"
+                (click)="addMember()"
+              >
+                {{ adding() ? 'Đang thêm...' : 'Thêm vào họ' }}
+              </button>
+              @if (inviteError()) {
+                <div class="invite-err">{{ inviteError() }}</div>
+              }
             </div>
+          </div>
 
+          <!-- Drive card -->
+          <div class="card">
+            <div class="card-title">🗂 Google Drive gia phả</div>
             @if (driveLoading()) {
-              <div class="dc-loading">Đang tải...</div>
+              <div class="dc-note">Đang tải...</div>
             } @else if (drive()) {
               @if (drive()!.connected) {
-                <!-- Đã kết nối -->
                 <div class="dc-connected">
                   <span class="dc-dot"></span>
-                  <div class="dc-info">
+                  <div>
                     <div class="dc-email">{{ drive()!.account!.email }}</div>
                     <div class="dc-date">
                       Kết nối {{ fmt(drive()!.account!.createdAt) }}
@@ -104,69 +105,32 @@ const ROLE_DESC: Record<Role, string> = {
                   </div>
                 </div>
                 <div class="dc-btns">
-                  <button class="btn-relink" (click)="openDrivePopup()">
-                    🔄 Đổi tài khoản
+                  <button class="btn-sm" (click)="openDrivePopup()">
+                    🔄 Đổi account
                   </button>
-                  <button class="btn-unlink" (click)="disconnectDrive()">
+                  <button class="btn-sm danger" (click)="disconnectDrive()">
                     Ngắt
                   </button>
                 </div>
-                <div class="dc-note">
-                  Editors có toggle 🔑 Drive bên dưới sẽ upload ảnh vào Drive
-                  này — không cần kết nối tài khoản riêng.
-                </div>
+                <p class="dc-note">
+                  Editors có toggle 🔑 bên dưới sẽ upload vào Drive này.
+                </p>
               } @else {
-                <!-- Chưa kết nối -->
-                <div class="dc-empty">
-                  <p>
-                    Kết nối 1 tài khoản Google Drive để lưu ảnh album.<br />Có
-                    thể dùng account khác với account đăng nhập.
-                  </p>
-                  <button class="btn-connect" (click)="openDrivePopup()">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 87.3 78"
-                      fill="none"
-                      style="flex-shrink:0"
-                    >
-                      <path
-                        d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z"
-                        fill="#0066da"
-                      />
-                      <path
-                        d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.5z"
-                        fill="#00ac47"
-                      />
-                      <path
-                        d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z"
-                        fill="#ea4335"
-                      />
-                      <path
-                        d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z"
-                        fill="#00832d"
-                      />
-                      <path
-                        d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z"
-                        fill="#2684fc"
-                      />
-                      <path
-                        d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z"
-                        fill="#ffba00"
-                      />
-                    </svg>
-                    Kết nối Google Drive
-                  </button>
-                </div>
+                <p class="dc-note">
+                  Kết nối 1 tài khoản Google Drive để lưu ảnh album.
+                </p>
+                <button class="btn-connect" (click)="openDrivePopup()">
+                  Kết nối Google Drive
+                </button>
               }
             }
           </div>
 
-          <!-- Role legend -->
-          <div class="legend">
+          <!-- Legend -->
+          <div class="card">
             @for (r of roles; track r) {
               <div class="lg-row">
-                <span class="lg-chip" [class]="'role-' + r.toLowerCase()">{{
+                <span class="role-chip" [class]="'rc-' + r.toLowerCase()">{{
                   ROLE_LABELS[r]
                 }}</span>
                 <span class="lg-desc">{{ ROLE_DESC[r] }}</span>
@@ -175,103 +139,80 @@ const ROLE_DESC: Record<Role, string> = {
           </div>
         </aside>
 
-        <!-- ── RIGHT: Members table ───────────────────────────── -->
-        <main class="members-col">
-          <div class="tbl-hd">
-            <div class="tbl-col col-user">THÀNH VIÊN</div>
-            <div class="tbl-col col-email">EMAIL</div>
-            <div class="tbl-col col-joined">THAM GIA</div>
-            <div class="tbl-col col-role">ROLE</div>
-            @if (drive()?.connected) {
-              <div class="tbl-col col-drive" title="Quyền upload Google Drive">
-                🔑 DRIVE
-              </div>
-            }
-            <div class="tbl-col col-del"></div>
+        <!-- MAIN -->
+        <main class="main">
+          <div class="main-hd">
+            <div class="main-title">
+              Danh sách thành viên
+              <span class="cnt">{{ members().length }}</span>
+            </div>
           </div>
 
           @if (loading()) {
-            <div class="tbl-empty">Đang tải...</div>
+            <div class="state-msg">
+              <div class="spinner"></div>
+              Đang tải...
+            </div>
+          } @else if (members().length === 0) {
+            <div class="state-msg">Chưa có thành viên nào</div>
           } @else {
-            @for (m of members(); track m.userId) {
-              <div class="tbl-row" [class.row-me]="m.userId === myUserId()">
-                <!-- Avatar + name -->
-                <div class="tbl-cell col-user">
-                  <div class="av-wrap">
-                    @if (m.user.avatarUrl) {
-                      <img class="av" [src]="m.user.avatarUrl" />
-                    } @else {
-                      <div class="av av-fb">
-                        {{ initials(m.user.name || m.user.email) }}
-                      </div>
-                    }
-                    <div>
-                      <div class="m-name">{{ m.user.name || '—' }}</div>
+            <div class="member-list">
+              @for (m of members(); track m.userId) {
+                <div class="member-row" [class.is-me]="m.userId === myUserId()">
+                  @if (m.user.avatarUrl) {
+                    <img class="av" [src]="m.user.avatarUrl" />
+                  } @else {
+                    <div class="av av-fb">
+                      {{ initials(m.user.name || m.user.email) }}
+                    </div>
+                  }
+                  <div class="m-info">
+                    <div class="m-name">
+                      {{ m.user.name || m.user.email }}
                       @if (m.userId === myUserId()) {
                         <span class="badge-me">Bạn</span>
                       }
                     </div>
+                    <div class="m-email">{{ m.user.email }}</div>
+                    <div class="m-meta">Tham gia {{ fmt(m.joinedAt) }}</div>
                   </div>
-                </div>
-
-                <!-- Email -->
-                <div class="tbl-cell col-email">{{ m.user.email }}</div>
-
-                <!-- Joined -->
-                <div class="tbl-cell col-joined">{{ fmt(m.joinedAt) }}</div>
-
-                <!-- Role -->
-                <div class="tbl-cell col-role">
-                  @if (m.userId === myUserId()) {
-                    <span
-                      class="role-badge"
-                      [class]="'role-' + m.role.toLowerCase()"
-                    >
-                      {{ ROLE_LABELS[m.role] }}
-                    </span>
-                  } @else {
-                    <select
-                      class="role-sel"
-                      [value]="m.role"
-                      (change)="changeRole(m, $event)"
-                    >
-                      <option value="OWNER">👑 Owner</option>
-                      <option value="EDITOR">✏️ Editor</option>
-                      <option value="VIEWER">👁 Viewer</option>
-                    </select>
-                  }
-                </div>
-
-                <!-- Drive toggle — chỉ hiện khi drive connected và role EDITOR/OWNER -->
-                @if (drive()?.connected) {
-                  <div class="tbl-cell col-drive">
-                    @if (m.role === 'VIEWER') {
+                  <div class="m-role">
+                    @if (m.userId === myUserId()) {
                       <span
-                        class="drive-na"
-                        title="Viewer không cần quyền Drive"
-                        >—</span
-                      >
-                    } @else if (m.isDriveConnector) {
-                      <span
-                        class="drive-owner-badge"
-                        title="Người kết nối Drive"
-                        >🔑</span
+                        class="role-chip"
+                        [class]="'rc-' + m.role.toLowerCase()"
+                        >{{ ROLE_LABELS[m.role] }}</span
                       >
                     } @else {
-                      <label class="toggle">
-                        <input
-                          type="checkbox"
-                          [checked]="m.hasDrivePerm"
-                          (change)="toggleDrive(m, $event)"
-                        />
-                        <span class="ts"></span>
-                      </label>
+                      <select
+                        class="role-sel"
+                        [value]="m.role"
+                        (change)="changeRole(m, $event)"
+                      >
+                        <option value="OWNER">👑 Owner</option>
+                        <option value="EDITOR">✏️ Editor</option>
+                        <option value="VIEWER">👁 Viewer</option>
+                      </select>
                     }
                   </div>
-                }
-
-                <!-- Remove -->
-                <div class="tbl-cell col-del">
+                  @if (drive()?.connected) {
+                    <div class="m-drive">
+                      @if (m.role === 'VIEWER') {
+                        <span class="drive-na">—</span>
+                      } @else if (m.isDriveConnector) {
+                        <span title="Người kết nối Drive">🔑</span>
+                      } @else {
+                        <label class="toggle">
+                          <input
+                            type="checkbox"
+                            [checked]="m.hasDrivePerm"
+                            (change)="toggleDrive(m, $event)"
+                          />
+                          <span class="ts"></span>
+                        </label>
+                      }
+                    </div>
+                  }
                   @if (m.userId !== myUserId()) {
                     <button
                       class="btn-rm"
@@ -282,8 +223,8 @@ const ROLE_DESC: Record<Role, string> = {
                     </button>
                   }
                 </div>
-              </div>
-            }
+              }
+            </div>
           }
         </main>
       </div>
@@ -295,7 +236,12 @@ const ROLE_DESC: Record<Role, string> = {
   `,
   styles: [
     `
-      /* ── Layout ─────────────────────────────────────────────── */
+      :host {
+        display: block;
+      }
+      * {
+        box-sizing: border-box;
+      }
       .page {
         min-height: 100vh;
         background: #07080f;
@@ -305,18 +251,18 @@ const ROLE_DESC: Record<Role, string> = {
       .hd {
         display: flex;
         align-items: center;
-        gap: 14px;
-        padding: 14px 24px;
+        gap: 12px;
+        padding: 12px 24px;
         background: #0b0f1c;
         border-bottom: 1px solid #111827;
       }
       .btn-back {
-        padding: 6px 12px;
+        padding: 6px 10px;
         background: none;
         border: 1px solid #1e293b;
         color: #64748b;
         border-radius: 6px;
-        font-size: 12px;
+        font-size: 14px;
         cursor: pointer;
       }
       .btn-back:hover {
@@ -333,66 +279,122 @@ const ROLE_DESC: Record<Role, string> = {
         color: #475569;
         margin-top: 2px;
       }
-
-      .body {
+      .layout {
         display: grid;
-        grid-template-columns: 280px 1fr;
-        gap: 24px;
-        padding: 24px;
+        grid-template-columns: 300px 1fr;
+        gap: 20px;
+        padding: 20px 24px;
         align-items: start;
       }
-      @media (max-width: 900px) {
-        .body {
+      @media (max-width: 860px) {
+        .layout {
           grid-template-columns: 1fr;
         }
       }
-
-      /* ── Drive Card ──────────────────────────────────────────── */
-      .drive-col {
+      .aside {
         display: flex;
         flex-direction: column;
-        gap: 16px;
-        position: sticky;
-        top: 24px;
+        gap: 0;
       }
-      .drive-card {
+      .card {
         background: #0c1120;
         border: 1px solid #1e293b;
         border-radius: 12px;
         padding: 18px;
+        margin-bottom: 14px;
       }
-      .dc-hd {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-      .dc-logo {
-        width: 36px;
-        height: 36px;
-        background: #060d1a;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-      }
-      .dc-title {
+      .card-title {
         font-size: 13px;
         font-weight: 700;
         color: #f1f5f9;
-        margin-bottom: 2px;
+        margin-bottom: 8px;
       }
-      .dc-sub {
+      .card-desc {
         font-size: 11px;
         color: #475569;
+        line-height: 1.6;
+        margin: 0 0 12px;
       }
-      .dc-loading {
-        font-size: 12px;
+      .invite-form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .input-email {
+        background: #060d1a;
+        border: 1px solid #1e293b;
+        border-radius: 7px;
+        padding: 9px 12px;
+        color: #e2e8f0;
+        font-size: 13px;
+        width: 100%;
+      }
+      .input-email:focus {
+        outline: none;
+        border-color: #3b82f6;
+      }
+      .input-email::placeholder {
+        color: #334155;
+      }
+      .role-tabs {
+        display: flex;
+        gap: 4px;
+      }
+      .rt-btn {
+        flex: 1;
+        padding: 6px 4px;
+        font-size: 11px;
+        background: none;
+        border: 1px solid #1e293b;
+        color: #64748b;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .rt-btn.active {
+        border-color: #3b82f6;
+        background: #0f1e38;
+        color: #60a5fa;
+        font-weight: 700;
+      }
+      .rt-desc {
+        font-size: 10px;
         color: #475569;
+        line-height: 1.5;
+        min-height: 30px;
       }
-
+      .btn-invite {
+        padding: 9px;
+        background: #1d4ed8;
+        border: none;
+        color: #fff;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .btn-invite:hover:not(:disabled) {
+        background: #2563eb;
+      }
+      .btn-invite:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .invite-err {
+        font-size: 11px;
+        color: #ef4444;
+        background: #2d0a0a;
+        border: 1px solid #7f1d1d;
+        border-radius: 6px;
+        padding: 8px 10px;
+        line-height: 1.5;
+      }
+      .dc-note {
+        font-size: 11px;
+        color: #475569;
+        line-height: 1.6;
+        margin: 0 0 8px;
+      }
       .dc-connected {
         display: flex;
         align-items: center;
@@ -400,84 +402,53 @@ const ROLE_DESC: Record<Role, string> = {
         background: #060d1a;
         border: 1px solid #166534;
         border-radius: 8px;
-        padding: 12px 14px;
+        padding: 10px 12px;
         margin-bottom: 10px;
       }
       .dc-dot {
-        width: 8px;
-        height: 8px;
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
         background: #22c55e;
         flex-shrink: 0;
-        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
       }
       .dc-email {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
-        color: #f1f5f9;
       }
       .dc-date {
         font-size: 10px;
         color: #334155;
-        margin-top: 1px;
-      }
-      .dc-info {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
       }
       .dc-btns {
         display: flex;
         gap: 8px;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
       }
-      .btn-relink {
+      .btn-sm {
         flex: 1;
-        padding: 7px;
-        font-size: 12px;
+        padding: 6px;
+        font-size: 11px;
         background: none;
         border: 1px solid #1e293b;
         color: #64748b;
-        border-radius: 7px;
+        border-radius: 6px;
         cursor: pointer;
       }
-      .btn-relink:hover {
+      .btn-sm:hover {
         border-color: #334155;
         color: #94a3b8;
       }
-      .btn-unlink {
-        padding: 7px 12px;
-        font-size: 12px;
-        background: none;
-        border: 1px solid #2d0a0a;
+      .btn-sm.danger {
+        border-color: #2d0a0a;
         color: #ef4444;
-        border-radius: 7px;
-        cursor: pointer;
       }
-      .btn-unlink:hover {
+      .btn-sm.danger:hover {
         background: #2d0a0a;
       }
-      .dc-note {
-        font-size: 11px;
-        color: #334155;
-        line-height: 1.6;
-        border-top: 1px solid #111827;
-        padding-top: 10px;
-      }
-
-      .dc-empty p {
-        font-size: 12px;
-        color: #475569;
-        line-height: 1.7;
-        margin: 0 0 12px;
-      }
       .btn-connect {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
         width: 100%;
-        padding: 10px;
+        padding: 9px;
         background: #fff;
         border: none;
         color: #333;
@@ -489,23 +460,21 @@ const ROLE_DESC: Record<Role, string> = {
       .btn-connect:hover {
         opacity: 0.9;
       }
-
-      /* ── Legend ─────────────────────────────────────────────── */
-      .legend {
-        background: #0c1120;
-        border: 1px solid #1e293b;
-        border-radius: 12px;
-        padding: 14px 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
       .lg-row {
         display: flex;
         align-items: flex-start;
         gap: 10px;
+        margin-bottom: 8px;
       }
-      .lg-chip {
+      .lg-row:last-child {
+        margin-bottom: 0;
+      }
+      .lg-desc {
+        font-size: 11px;
+        color: #475569;
+        line-height: 1.5;
+      }
+      .role-chip {
         font-size: 10px;
         font-weight: 700;
         padding: 3px 9px;
@@ -514,210 +483,191 @@ const ROLE_DESC: Record<Role, string> = {
         flex-shrink: 0;
         margin-top: 1px;
       }
-      .lg-desc {
-        font-size: 11px;
-        color: #475569;
-        line-height: 1.5;
-      }
-      .role-owner {
+      .rc-owner {
         background: #1e3a6e;
         color: #60a5fa;
       }
-      .role-editor {
+      .rc-editor {
         background: #1a2e0a;
         color: #4ade80;
       }
-      .role-viewer {
+      .rc-viewer {
         background: #1e293b;
-        color: #64748b;
+        color: #94a3b8;
       }
-
-      /* ── Members table ───────────────────────────────────────── */
-      .members-col {
+      .main {
         background: #0c1120;
         border: 1px solid #1e293b;
         border-radius: 12px;
         overflow: hidden;
       }
-      .tbl-hd {
-        display: grid;
-        grid-template-columns: 180px 1fr 100px 130px 70px 36px;
-        gap: 0;
-        padding: 0 16px;
-        background: #060d1a;
+      .main-hd {
+        padding: 14px 18px;
         border-bottom: 1px solid #111827;
       }
-      .tbl-row {
-        display: grid;
-        grid-template-columns: 180px 1fr 100px 130px 70px 36px;
-        gap: 0;
-        padding: 0 16px;
-        border-bottom: 1px solid #0b0f1c;
-        align-items: center;
-        transition: background 0.15s;
-      }
-      /* Without drive column */
-      .tbl-hd:not(:has(.col-drive)) {
-        grid-template-columns: 180px 1fr 100px 130px 36px;
-      }
-      .tbl-row:not(:has(.col-drive)) {
-        grid-template-columns: 180px 1fr 100px 130px 36px;
-      }
-      .tbl-row:hover {
-        background: #0a0e1a;
-      }
-      .row-me {
-        background: #050a14;
-      }
-      .tbl-col {
-        padding: 10px 8px;
-        font-size: 10px;
-        font-weight: 700;
-        color: #334155;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-      }
-      .tbl-cell {
-        padding: 12px 8px;
+      .main-title {
         font-size: 13px;
+        font-weight: 700;
+        color: #f1f5f9;
       }
-      .tbl-empty {
+      .cnt {
+        background: #1e293b;
+        color: #64748b;
+        font-size: 10px;
+        padding: 2px 7px;
+        border-radius: 8px;
+        font-weight: 400;
+        margin-left: 6px;
+      }
+      .state-msg {
         padding: 40px;
         text-align: center;
         color: #475569;
         font-size: 13px;
-      }
-
-      .col-user {
-        min-width: 0;
-      }
-      .col-email {
-        min-width: 0;
-        color: #475569;
-        font-size: 12px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .col-joined {
-        color: #334155;
-        font-size: 12px;
-        white-space: nowrap;
-      }
-      .col-drive {
         display: flex;
         align-items: center;
         justify-content: center;
-      }
-      .col-del {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-      .av-wrap {
-        display: flex;
-        align-items: center;
         gap: 10px;
       }
+      .spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #1e293b;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .member-list {
+        display: flex;
+        flex-direction: column;
+      }
+      .member-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 18px;
+        border-bottom: 1px solid #0b0f1c;
+        transition: background 0.12s;
+      }
+      .member-row:last-child {
+        border-bottom: none;
+      }
+      .member-row:hover {
+        background: #0a0f1a;
+      }
+      .member-row.is-me {
+        background: #060d1a;
+      }
       .av {
-        width: 30px;
-        height: 30px;
+        width: 36px;
+        height: 36px;
         border-radius: 50%;
         object-fit: cover;
         flex-shrink: 0;
       }
       .av-fb {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
         background: #1e3a6e;
         color: #60a5fa;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 700;
+        flex-shrink: 0;
+      }
+      .m-info {
+        flex: 1;
+        min-width: 0;
       }
       .m-name {
         font-size: 13px;
         font-weight: 600;
-        color: #e2e8f0;
-        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .m-email {
+        font-size: 11px;
+        color: #475569;
+        margin-top: 1px;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 130px;
+        white-space: nowrap;
+      }
+      .m-meta {
+        font-size: 10px;
+        color: #334155;
+        margin-top: 2px;
       }
       .badge-me {
         font-size: 9px;
-        background: #1e3a6e;
-        color: #60a5fa;
+        background: #1e293b;
+        color: #64748b;
         padding: 1px 6px;
         border-radius: 8px;
-        font-weight: 700;
+        font-weight: 400;
       }
-
-      .role-badge {
-        font-size: 11px;
-        font-weight: 700;
-        padding: 3px 10px;
-        border-radius: 10px;
-        white-space: nowrap;
+      .m-role {
+        flex-shrink: 0;
       }
       .role-sel {
         background: #060d1a;
         border: 1px solid #1e293b;
         color: #e2e8f0;
-        border-radius: 7px;
+        border-radius: 6px;
         padding: 5px 8px;
         font-size: 12px;
         cursor: pointer;
-        width: 100%;
       }
       .role-sel:focus {
         outline: none;
         border-color: #3b82f6;
       }
-
-      /* Drive column cells */
+      .m-drive {
+        flex-shrink: 0;
+        width: 36px;
+        display: flex;
+        justify-content: center;
+      }
       .drive-na {
-        color: #1e293b;
-        font-size: 16px;
-        display: block;
-        text-align: center;
+        color: #334155;
+        font-size: 13px;
       }
-      .drive-owner-badge {
-        font-size: 16px;
-        display: block;
-        text-align: center;
-        cursor: default;
-      }
-      /* Toggle switch */
       .toggle {
         position: relative;
         display: inline-block;
-        width: 38px;
-        height: 21px;
+        width: 32px;
+        height: 18px;
         cursor: pointer;
       }
       .toggle input {
         opacity: 0;
         width: 0;
         height: 0;
-        position: absolute;
       }
       .ts {
         position: absolute;
         inset: 0;
         background: #1e293b;
-        border-radius: 21px;
+        border-radius: 18px;
         transition: 0.2s;
       }
       .ts::before {
         content: '';
         position: absolute;
-        width: 15px;
-        height: 15px;
+        width: 12px;
+        height: 12px;
         left: 3px;
         bottom: 3px;
-        background: #475569;
+        background: #64748b;
         border-radius: 50%;
         transition: 0.2s;
       }
@@ -725,60 +675,46 @@ const ROLE_DESC: Record<Role, string> = {
         background: #1d4ed8;
       }
       .toggle input:checked + .ts::before {
+        transform: translateX(14px);
         background: #fff;
-        transform: translateX(17px);
       }
-
       .btn-rm {
         background: none;
         border: none;
-        color: #334155;
+        color: #475569;
+        font-size: 14px;
         cursor: pointer;
-        font-size: 13px;
         padding: 4px 6px;
         border-radius: 4px;
+        flex-shrink: 0;
       }
       .btn-rm:hover {
         color: #ef4444;
-        background: #1a0505;
       }
-
-      /* Toast */
       .toast {
         position: fixed;
         bottom: 24px;
         left: 50%;
         transform: translateX(-50%);
-        background: #16a34a;
+        background: #1d4ed8;
         color: #fff;
-        padding: 9px 22px;
-        border-radius: 20px;
+        padding: 10px 20px;
+        border-radius: 10px;
         font-size: 13px;
         font-weight: 600;
-        z-index: 999;
-        white-space: nowrap;
-        animation: up 0.2s;
+        z-index: 9999;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
       }
       .toast.err {
         background: #dc2626;
       }
-      @keyframes up {
-        from {
-          opacity: 0;
-          transform: translateX(-50%) translateY(8px);
-        }
-        to {
-          opacity: 1;
-          transform: translateX(-50%) translateY(0);
-        }
-      }
     `,
   ],
 })
-export class AccessPage implements OnInit {
-  private http = inject(HttpClient);
+export class AccessPage implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
+  private http = inject(HttpClient);
 
   familyId = '';
   familyName = signal('');
@@ -787,9 +723,13 @@ export class AccessPage implements OnInit {
   loading = signal(false);
   drive = signal<DriveStatus | null>(null);
   driveLoading = signal(false);
-
   toast = signal('');
   toastErr = signal(false);
+
+  inviteEmail = '';
+  inviteRole: Role = 'VIEWER';
+  adding = signal(false);
+  inviteError = signal('');
 
   readonly roles: Role[] = ['OWNER', 'EDITOR', 'VIEWER'];
   readonly ROLE_LABELS = ROLE_LABELS;
@@ -813,12 +753,9 @@ export class AccessPage implements OnInit {
     await Promise.all([this.loadAccess(), this.loadDrive()]);
     await this.mergePermissions();
   }
-
   ngOnDestroy() {
     window.removeEventListener('message', this.onMsg);
   }
-
-  // ── Load data ─────────────────────────────────────────────────
 
   async loadAccess() {
     this.loading.set(true);
@@ -826,18 +763,17 @@ export class AccessPage implements OnInit {
       const r: any = await this.http
         .get(`${environment.apiUrl}/api/families/${this.familyId}/access`)
         .toPromise();
-      const list: Member[] = (r.data ?? []).map((m: any) => ({
-        userId: m.userId ?? m.user?.id,
-        role: m.role,
-        joinedAt: m.joinedAt ?? m.createdAt,
-        user: m.user,
-        hasDrivePerm: false,
-        isDriveConnector: false,
-      }));
-      // Tìm myUserId từ member không có dropdown (bản thân)
-      const me = list.find((m) => m.user?.email === r.myEmail);
+      this.members.set(
+        (r.data ?? []).map((m: any) => ({
+          userId: m.userId ?? m.user?.id,
+          role: m.role,
+          joinedAt: m.joinedAt ?? m.createdAt,
+          user: m.user,
+          hasDrivePerm: false,
+          isDriveConnector: false,
+        })),
+      );
       if (r.myUserId) this.myUserId.set(r.myUserId);
-      this.members.set(list);
       this.familyName.set(r.familyName ?? '');
     } catch {
       this.showToast('Lỗi tải danh sách', true);
@@ -859,7 +795,6 @@ export class AccessPage implements OnInit {
     }
   }
 
-  // Sau khi load cả 2, merge drive permissions vào members
   async mergePermissions() {
     if (!this.drive()?.connected) return;
     try {
@@ -868,11 +803,7 @@ export class AccessPage implements OnInit {
           `${environment.apiUrl}/api/google-auth/permissions?familyId=${this.familyId}`,
         )
         .toPromise();
-      const perms: {
-        userId: string;
-        hasAccess: boolean;
-        isConnector: boolean;
-      }[] = r.data ?? [];
+      const perms: any[] = r.data ?? [];
       this.members.update((list) =>
         list.map((m) => {
           const p = perms.find((p) => p.userId === m.userId);
@@ -888,12 +819,42 @@ export class AccessPage implements OnInit {
     } catch {}
   }
 
-  // ── Role change ───────────────────────────────────────────────
+  async addMember() {
+    const email = this.inviteEmail.trim();
+    if (!email) return;
+    this.inviteError.set('');
+    this.adding.set(true);
+    try {
+      const r: any = await this.http
+        .post(`${environment.apiUrl}/api/families/${this.familyId}/access`, {
+          email,
+          role: this.inviteRole,
+        })
+        .toPromise();
+      const m = r.data;
+      this.members.update((list) => [
+        ...list,
+        {
+          userId: m.userId ?? m.user?.id,
+          role: m.role,
+          joinedAt: m.joinedAt ?? new Date().toISOString(),
+          user: m.user,
+          hasDrivePerm: false,
+          isDriveConnector: false,
+        },
+      ]);
+      this.inviteEmail = '';
+      this.showToast(`Đã thêm ${email}`);
+    } catch (err: any) {
+      this.inviteError.set(err?.error?.error ?? 'Lỗi thêm thành viên');
+    } finally {
+      this.adding.set(false);
+    }
+  }
 
   async changeRole(m: Member, e: Event) {
     const newRole = (e.target as HTMLSelectElement).value as Role;
     const old = m.role;
-    // Optimistic update
     this.members.update((l) =>
       l.map((x) => (x.userId === m.userId ? { ...x, role: newRole } : x)),
     );
@@ -904,7 +865,6 @@ export class AccessPage implements OnInit {
           role: newRole,
         })
         .toPromise();
-      // Nếu đổi từ EDITOR/OWNER → VIEWER, tự động thu hồi drive perm
       if (newRole === 'VIEWER' && old !== 'VIEWER') {
         await this.revokeDrivePerm(m.userId).catch(() => {});
         this.members.update((l) =>
@@ -913,8 +873,6 @@ export class AccessPage implements OnInit {
           ),
         );
       }
-      // Reload permissions để phản ánh đúng
-      await this.mergePermissions();
       this.showToast('Đã cập nhật quyền');
     } catch {
       this.members.update((l) =>
@@ -924,11 +882,8 @@ export class AccessPage implements OnInit {
     }
   }
 
-  // ── Drive toggle ──────────────────────────────────────────────
-
   async toggleDrive(m: Member, e: Event) {
     const checked = (e.target as HTMLInputElement).checked;
-    // Optimistic
     this.members.update((l) =>
       l.map((x) =>
         x.userId === m.userId ? { ...x, hasDrivePerm: checked } : x,
@@ -948,7 +903,6 @@ export class AccessPage implements OnInit {
         this.showToast('Đã thu hồi quyền Drive');
       }
     } catch {
-      (e.target as HTMLInputElement).checked = !checked;
       this.members.update((l) =>
         l.map((x) =>
           x.userId === m.userId ? { ...x, hasDrivePerm: !checked } : x,
@@ -966,8 +920,6 @@ export class AccessPage implements OnInit {
       )
       .toPromise();
   }
-
-  // ── Drive connect / disconnect ────────────────────────────────
 
   openDrivePopup() {
     const url = this.drive()?.authUrl;
@@ -998,14 +950,12 @@ export class AccessPage implements OnInit {
     }
   }
 
-  // ── Remove member ─────────────────────────────────────────────
-
   async removeMember(m: Member) {
     if (!confirm(`Xoá ${m.user.name || m.user.email} khỏi gia phả?`)) return;
     try {
       await this.http
         .delete(`${environment.apiUrl}/api/families/${this.familyId}/access`, {
-          body: { userId: m.userId },
+          params: { userId: m.userId },
         })
         .toPromise();
       this.members.update((l) => l.filter((x) => x.userId !== m.userId));
@@ -1016,16 +966,18 @@ export class AccessPage implements OnInit {
   }
 
   goBack() {
-    this.router.navigate(['/families', this.familyId]);
+    this.router.navigate(['/families']);
   }
-
   initials(s: string) {
-    return s
-      .split(' ')
-      .map((w) => w[0])
-      .slice(-2)
-      .join('')
-      .toUpperCase();
+    return (
+      (s || '?')
+        .split(' ')
+        .map((w) => w[0])
+        .filter(Boolean)
+        .slice(-2)
+        .join('')
+        .toUpperCase() || '?'
+    );
   }
   fmt(d: string) {
     return new Date(d).toLocaleDateString('vi-VN', {
@@ -1034,7 +986,6 @@ export class AccessPage implements OnInit {
       year: 'numeric',
     });
   }
-
   private showToast(msg: string, err = false) {
     this.toast.set(msg);
     this.toastErr.set(err);

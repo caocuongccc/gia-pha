@@ -1,5 +1,6 @@
 // apps/frontend/src/app/features/families/pages/public-tree.page.ts
-// Route: /share/:token  (token = familyId)
+// Route: /share/:token  (token = familyId UUID)
+// Route: /f/:slug         (slug ngắn gọn)
 // viewOnly=true: xem chi tiết nhưng KHÔNG sửa/thêm/xoá
 import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -39,6 +40,7 @@ import { environment } from '../../../../environments/environment';
         <button class="btn-fund" (click)="goToActivities()">
           📰 Hoạt động
         </button>
+        <button class="btn-back-pub" (click)="goBack()">← Quay lại</button>
       </header>
 
       <div class="pub-body">
@@ -146,7 +148,7 @@ import { environment } from '../../../../environments/environment';
                       [src]="
                         selectedMember()!.photoUrl ||
                         '/assets/avatar-' +
-                          (selectedMember()!.gender.toLowerCase() || 'male') +
+                          (selectedMember()!.gender?.toLowerCase() || 'male') +
                           '.svg'
                       "
                     />
@@ -353,6 +355,21 @@ import { environment } from '../../../../environments/environment';
       }
       .btn-fund:hover {
         background: #1e3a6e;
+      }
+      .btn-back-pub {
+        padding: 5px 14px;
+        font-size: 12px;
+        background: none;
+        border: 1px solid #1e293b;
+        color: #64748b;
+        border-radius: 6px;
+        cursor: pointer;
+        white-space: nowrap;
+        margin-left: auto;
+      }
+      .btn-back-pub:hover {
+        color: #e2e8f0;
+        border-color: #334155;
       }
       .pub-body {
         flex: 1;
@@ -764,25 +781,50 @@ export class PublicTreePage implements OnInit {
     this.roTab.set('info');
   }
 
+  goBack() {
+    // Nếu có history → back, nếu không → về /families hoặc trang chủ
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      this.router.navigate(['/families']);
+    }
+  }
+
   goToFund() {
-    const familyId = this.route.snapshot.params['token'];
-    this.router.navigate(['/share', familyId, 'fund']);
+    const { token, slug } = this.route.snapshot.params;
+    if (slug) this.router.navigate(['/f', slug, 'fund']);
+    else this.router.navigate(['/share', token, 'fund']);
   }
 
   goToActivities() {
-    const familyId = this.route.snapshot.params['token'];
-    this.router.navigate(['/share', familyId, 'activities']);
+    const { token, slug } = this.route.snapshot.params;
+    if (slug) this.router.navigate(['/f', slug, 'activities']);
+    else this.router.navigate(['/share', token, 'activities']);
   }
 
   async ngOnInit() {
-    const familyId = this.route.snapshot.params['token'];
-    if (!familyId) {
-      this.error.set('Link không hợp lệ.');
-      this.loading.set(false);
-      return;
-    }
-    const base = `${environment.apiUrl}/api/public/families/${familyId}`;
+    const params = this.route.snapshot.params;
+    const token = params['token']; // /share/:token — UUID
+    const slug = params['slug']; // /f/:slug — tên ngắn
+
     try {
+      let familyId: string;
+
+      if (slug) {
+        // Resolve slug → familyId
+        const r: any = await this.http
+          .get(`${environment.apiUrl}/api/public/families/slug/${slug}`)
+          .toPromise();
+        familyId = r.data.familyId;
+      } else if (token) {
+        familyId = token;
+      } else {
+        this.error.set('Link không hợp lệ.');
+        this.loading.set(false);
+        return;
+      }
+
+      const base = `${environment.apiUrl}/api/public/families/${familyId}`;
       const [fam, mem, rel] = await Promise.all([
         this.http.get<any>(base).toPromise(),
         this.http.get<any>(`${base}/members`).toPromise(),

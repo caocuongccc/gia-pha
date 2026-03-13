@@ -1,41 +1,41 @@
+// apps/api/api/public/families/[id].ts
+// GET /api/public/families/:id           → thông tin family (public)
+// GET /api/public/families/:id/members   → danh sách thành viên
+// GET /api/public/families/:id/relations → danh sách quan hệ
+// Không cần auth — public route
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
-function cors(res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
+import { prisma } from '../../../src/_lib/prisma';
+import { setCorsHeaders, handleOptions } from '../../../src/_lib/cors';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  cors(res);
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // ── CORS ─────────────────────────────────────────────────────
+  setCorsHeaders(res);
+  if (req.method === 'OPTIONS') return handleOptions(req, res);
   if (req.method !== 'GET')
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method Not Allowed' });
 
-  const id = Array.isArray(req.query.id) ? req.query.id[0] : req.query.id;
+  const { id, action } = req.query as { id: string; action?: string };
+  if (!id) return res.status(400).json({ error: 'Thiếu id' });
 
-  const action = Array.isArray(req.query.action)
-    ? req.query.action[0]
-    : req.query.action;
-
-  if (!id) {
-    return res.status(400).json({ error: 'Missing family id' });
+  // ── Kiểm tra family tồn tại và public ────────────────────────
+  let family: any;
+  try {
+    family = await prisma.family.findUnique({ where: { id } });
+  } catch (e: any) {
+    console.error(
+      '[public/families] prisma.family.findUnique error:',
+      e.message,
+    );
+    return res.status(500).json({ error: 'DB error: ' + e.message });
   }
 
-  try {
-    const family = await prisma.family.findUnique({ where: { id } });
+  if (!family) return res.status(404).json({ error: 'Không tìm thấy gia phả' });
+  if (!family.isPublic)
+    return res.status(403).json({ error: 'Gia phả này không công khai' });
 
-    if (!family)
-      return res.status(404).json({ error: 'Không tìm thấy gia phả' });
-
-    if (!family.isPublic)
-      return res.status(403).json({ error: 'Gia phả này không công khai' });
-
-    // /members
-    if (action === 'members') {
+  // ── /members ─────────────────────────────────────────────────
+  if (action === 'members') {
+    try {
       const members = await prisma.member.findMany({
         where: { familyId: id },
         include: {
@@ -44,27 +44,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         orderBy: { generation: 'asc' },
       });
-
       return res.json({ data: members });
+    } catch (e: any) {
+      console.error('[public/families] members error:', e.message);
+      return res
+        .status(500)
+        .json({ error: 'DB error (members): ' + e.message });
     }
-
-    // /relations
-    if (action === 'relations') {
-      const relations = await prisma.relationship.findMany({
-        where: {
-          OR: [
-            { fromMember: { familyId: id } },
-            { toMember: { familyId: id } },
-          ],
-        },
-      });
-
-      return res.json({ data: relations });
-    }
-
-    return res.json({ data: family });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: 'Server error' });
   }
+
+  // ── /relations ───────────────────────────────────────────────
+  if (action === 'relations') {
+    try {
+      const relations = await prisma.relationship.findMany({
+        where: { fromMember: { familyId: id } },
+      });
+      return res.json({ data: relations });
+    } catch (e: any) {
+      console.error('[public/families] relations error:', e.message);
+      return res
+        .status(500)
+        .json({ error: 'DB error (relations): ' + e.message });
+    }
+  }
+
+  // ── GET family info (no action) ──────────────────────────────
+  return res.json({ data: family });
 }

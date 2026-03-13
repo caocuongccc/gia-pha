@@ -80,6 +80,9 @@ async function startServer() {
   const { default: publicFamiliesId } = await import(
     '../api/public/families/[id].js'
   );
+  const { default: publicBySlug } = await import(
+    '../api/public/families/slug/[slug].js'
+  ).catch(() => import('../api/public/families/slug/[slug]'));
   const { default: scholarshipIndex } = await import(
     '../api/scholarship/index.js'
   );
@@ -105,6 +108,12 @@ async function startServer() {
   // ── Routes: specific trước, generic sau ──────────────────────
 
   // public — không cần auth, inject action cho sub-path
+  // /api/public/families/slug/:slug  → resolve slug
+  app.get('/api/public/families/slug/:slug', (req: any, res: any) => {
+    req.query = { ...req.query, slug: req.params.slug };
+    return publicBySlug(req, res);
+  });
+
   app.get('/api/public/families/:id/members', (req, res) => {
     req.query = { ...req.query, id: req.params.id, action: 'members' };
     return publicFamiliesId(req as any, res as any);
@@ -172,11 +181,9 @@ async function startServer() {
   }
   app.all('/api/google-auth/permissions', async (req: any, res: any) => {
     if (!googleAuthPerms) {
-      return res
-        .status(500)
-        .json({
-          error: 'permissions handler not loaded — check compile output',
-        });
+      return res.status(500).json({
+        error: 'permissions handler not loaded — check compile output',
+      });
     }
     try {
       await googleAuthPerms(req, res);

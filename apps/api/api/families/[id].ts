@@ -1,8 +1,7 @@
 // apps/api/api/families/[id].ts
-// GET    /api/families/:id  — lấy thông tin gia phả
-// PATCH  /api/families/:id  — cập nhật (isPublic, name, description, coverUrl...)
-// DELETE /api/families/:id  — xoá gia phả (chỉ OWNER)
-
+// GET    /api/families/:id  — mọi member đều xem được
+// PATCH  /api/families/:id  — chỉ OWNER
+// DELETE /api/families/:id  — chỉ OWNER
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { prisma } from '../../src/_lib/prisma';
 import { requireAuth } from '../../src/_lib/auth';
@@ -17,7 +16,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { id } = req.query as { id: string };
 
-  // Kiểm tra user có thuộc gia phả này không
   const access = await prisma.familyMember.findFirst({
     where: { familyId: id, userId: user.id },
   });
@@ -27,7 +25,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .json({ error: 'Forbidden: not a member of this family' });
   }
 
-  // ── GET /api/families/:id ────────────────────────────────────
+  const isOwner = access.role === 'OWNER';
+
+  // ── GET ──────────────────────────────────────────────────────
   if (req.method === 'GET') {
     const family = await prisma.family.findUnique({
       where: { id },
@@ -35,21 +35,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     if (!family)
       return res.status(404).json({ error: 'Không tìm thấy gia phả' });
-    return res.json({ data: family });
+    // Trả về cả role để frontend biết quyền
+    return res.json({ data: { ...family, myRole: access.role } });
   }
 
-  // ── PATCH /api/families/:id ──────────────────────────────────
-  // Chỉ OWNER hoặc ADMIN mới được sửa
+  // ── PATCH ─────────────────────────────────────────────────────
   if (req.method === 'PATCH') {
-    const isAdmin = access.role === 'OWNER' || access.role === 'EDITOR';
-    if (!isAdmin) {
-      return res
-        .status(403)
-        .json({ error: 'Forbidden: need OWNER or ADMIN role' });
+    if (!isOwner)
+      return res.status(403).json({ error: 'Chỉ OWNER mới được sửa' });
+    const {
+      name,
+      description,
+      coverUrl,
+      isPublic,
+      slug: rawSlug,
+    } = req.body ?? {};
+
+    // Validate slug nếu có update
+    let slugUpdate: string | null | undefined = undefined;
+    if (rawSlug !== undefined) {
+      if (rawSlug === null || rawSlug === '') {
+        slugUpdate = null; // xoá slug
+      } else {
+        const slug = rawSlug
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        if (slug.length < 2)
+          return res.status(400).json({ error: 'Slug quá ngắn' });
+        const conflict = await prisma.family.findFirst({
+          where: { slug, NOT: { id: id } },
+        });
+        if (conflict)
+          return res.status(409).json({ error: `Slug "${slug}" đã được dùng` });
+        slugUpdate = slug;
+      }
     }
-
-    const { name, description, coverUrl, isPublic } = req.body ?? {};
-
     const updated = await prisma.family.update({
       where: { id },
       data: {
@@ -59,18 +82,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(isPublic !== undefined && { isPublic: Boolean(isPublic) }),
       },
     });
-
     return res.json({ data: updated });
   }
 
-  // ── DELETE /api/families/:id ─────────────────────────────────
-  // Chỉ OWNER mới được xoá
+  // ── DELETE ────────────────────────────────────────────────────
   if (req.method === 'DELETE') {
-    if (access.role !== 'OWNER') {
-      return res
-        .status(403)
-        .json({ error: 'Forbidden: only OWNER can delete' });
-    }
+    if (!isOwner)
+      return res.status(403).json({ error: 'Chỉ OWNER mới được xoá' });
     await prisma.family.delete({ where: { id } });
     return res.status(204).end();
   }

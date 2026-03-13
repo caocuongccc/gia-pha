@@ -50,6 +50,7 @@ model User {
 model Family {
   id          String   @id @default(uuid())
   name        String
+  slug        String?  @unique // vd: "ho-le-duy", dùng cho URL /f/:slug
   description String?
   ownerId     String
   isPublic    Boolean  @default(false)

@@ -7,6 +7,7 @@ import {
   effect,
   signal,
   computed,
+  untracked,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
@@ -15,11 +16,17 @@ import { ChiPhaiService } from '../../core/services/chi-phai.service';
 import { PhotoPickerComponent } from '../../shared/components/photo-picker/photo-picker.component';
 import type { Member } from '@gia-pha/shared-types';
 import { Gender } from '@gia-pha/shared-types';
+import { CapitalizeDirective } from '../../shared/directives/capitalize.directive';
 
 @Component({
   selector: 'app-member-form',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, PhotoPickerComponent],
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    PhotoPickerComponent,
+    CapitalizeDirective,
+  ],
   template: `
     <form [formGroup]="form" (ngSubmit)="submit()" class="member-form">
       <!-- ── Thông tin cơ bản ─────────────────────── -->
@@ -29,7 +36,11 @@ import { Gender } from '@gia-pha/shared-types';
         <div class="row">
           <div class="field flex-2">
             <label>Họ tên <span class="required">*</span></label>
-            <input formControlName="fullName" placeholder="Lê Văn A" />
+            <input
+              formControlName="fullName"
+              placeholder="Lê Văn A"
+              appCapitalize
+            />
           </div>
           <div class="field">
             <label>Tên tự / Tên khác</label>
@@ -389,20 +400,15 @@ export class MemberFormComponent {
   });
 
   constructor() {
-    // ── KEY FIX: effect() thay ngOnInit() ────────────────────────
-    // ngOnInit chỉ chạy 1 lần khi component tạo ra → form không reload
-    // khi bấm sang người khác vì Angular tái dùng cùng instance.
-    // effect() chạy lại MỖI KHI editMember() signal thay đổi.
     effect(() => {
       const familyId = this.familyId();
       const m = this.editMember();
 
-      // Load chi/phái nếu chưa có (fire-and-forget, không block effect)
-      if (!this.chiSvc.chiList().length) {
+      // ✅ untracked: đọc chiList để check nhưng KHÔNG track làm dependency
+      if (!untracked(() => this.chiSvc.chiList().length)) {
         this.chiSvc.load(familyId);
       }
 
-      // Reset về blank để không còn sót dữ liệu người trước
       this.form.reset({
         fullName: '',
         alias: '',

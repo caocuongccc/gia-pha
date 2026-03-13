@@ -57,6 +57,23 @@ export const routes: Routes = [
       ),
   },
   {
+    // URL ngắn dễ share: /f/ho-le-duy
+    path: 'f/:slug',
+    loadComponent: () =>
+      import('./features/families/pages/public-tree.page').then(
+        (m) => m.PublicTreePage,
+      ),
+  },
+  { path: 'f/:slug/fund', component: FundPage, data: { public: true } },
+  {
+    path: 'f/:slug/activities',
+    loadComponent: () =>
+      import('./features/activities/activities.page').then(
+        (m) => m.ActivitiesPage,
+      ),
+    data: { public: true },
+  },
+  {
     path: 'auth/callback',
     loadComponent: () =>
       import('./features/auth/auth-callback.component').then(
@@ -69,6 +86,12 @@ export const routes: Routes = [
       import('./features/auth/auth-callback.component').then(
         (m) => m.AuthCallbackComponent,
       ),
+  },
+  {
+    path: 'access/:id',
+    loadComponent: () =>
+      import('./features/families/pages/access.page').then((m) => m.AccessPage),
+    canActivate: [authGuard],
   },
   {
     path: 'families/:id/access',

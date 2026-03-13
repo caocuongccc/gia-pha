@@ -74,12 +74,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .json({ error: 'Chỉ OWNER mới được tạo gia phả mới' });
     }
 
-    const { name, description } = req.body ?? {};
+    const { name, description, slug: rawSlug } = req.body ?? {};
     if (!name) return res.status(400).json({ error: 'Thiếu tên gia phả' });
+
+    // Validate + normalize slug
+    let slug: string | null = null;
+    if (rawSlug) {
+      slug = rawSlug
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-') // chỉ cho a-z, 0-9, dấu -
+        .replace(/-+/g, '-') // gộp nhiều dấu - liên tiếp
+        .replace(/^-|-$/g, ''); // bỏ dấu - đầu/cuối
+      if (slug.length < 2)
+        return res
+          .status(400)
+          .json({ error: 'Slug quá ngắn (tối thiểu 2 ký tự)' });
+      // Check unique
+      const existing = await prisma.family.findUnique({ where: { slug } });
+      if (existing)
+        return res
+          .status(409)
+          .json({ error: `Slug "${slug}" đã được dùng, hãy chọn tên khác` });
+    }
 
     const family = await prisma.family.create({
       data: {
         name,
+        slug: slug || null,
         description,
         ownerId: user.id,
         accessList: {

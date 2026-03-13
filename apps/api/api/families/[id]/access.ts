@@ -49,6 +49,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
+  // ── POST — thêm user bằng email ─────────────────────────────
+  if (req.method === 'POST') {
+    const { email, role } = req.body ?? {};
+    if (!email) return res.status(400).json({ error: 'Thiếu email' });
+    const addRole =
+      role && ['OWNER', 'EDITOR', 'VIEWER'].includes(role) ? role : 'VIEWER';
+
+    // Tìm user theo email
+    const target = await prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+    });
+    if (!target)
+      return res.status(404).json({
+        error: `Không tìm thấy tài khoản với email "${email}". User phải đăng nhập ít nhất 1 lần.`,
+      });
+
+    // Kiểm tra đã có trong gia phả chưa
+    const exists = await prisma.familyMember.findFirst({
+      where: { familyId, userId: target.id },
+    });
+    if (exists)
+      return res.status(409).json({
+        error: `${email} đã là thành viên của gia phả này (${exists.role})`,
+      });
+
+    const newMember = await prisma.familyMember.create({
+      data: { familyId, userId: target.id, role: addRole },
+      include: {
+        user: {
+          select: { id: true, email: true, name: true, avatarUrl: true },
+        },
+      },
+    });
+    return res.status(201).json({ data: newMember });
+  }
+
   // ── PATCH — đổi role ─────────────────────────────────────────
   if (req.method === 'PATCH') {
     const { userId, role } = req.body ?? {};

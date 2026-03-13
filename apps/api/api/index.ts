@@ -20,6 +20,7 @@ import chiIdHandler from './chi/[id]';
 import phaiHandler from './phai/index';
 import phaiIdHandler from './phai/[id]';
 import publicFamiliesHandler from './public/families/[id]';
+import publicBySlugHandler from './public/families/slug/[slug]';
 import scholarshipHandler from './scholarship/index';
 import scholarshipIdHandler from './scholarship/[id]';
 import fundHandler from './fund/index';
@@ -29,6 +30,7 @@ import postIdHandler from './post/[id]';
 import uploadHandler from './upload/index';
 import googleAuthHandler from './google-auth/index';
 import googleAuthCallback from './google-auth/callback';
+import googleAuthPerms from './google-auth/permissions';
 
 // ── Helper inject :id vào req.query ──────────────────────────────────────────
 function injectId(req: VercelRequest, id: string) {
@@ -47,6 +49,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // /api/health
   if (path === '/api/health') {
     return res.json({ ok: true, time: new Date() });
+  }
+
+  // /api/public/families/slug/:slug
+  if (seg[1] === 'public' && seg[2] === 'families' && seg[3] === 'slug') {
+    req.query = { ...req.query, slug: seg[4] };
+    return publicBySlugHandler(req, res);
   }
 
   // /api/public/families/:id  (+ /members, /relations sub-paths)
@@ -184,6 +192,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // /api/google-auth/callback & /api/google-auth
   if (seg[1] === 'google-auth' && seg[2] === 'callback')
     return googleAuthCallback(req, res);
+  if (seg[1] === 'google-auth' && seg[2] === 'permissions')
+    return googleAuthPerms(req, res);
   if (seg[1] === 'google-auth') return googleAuthHandler(req, res);
 
   return res.status(404).json({ error: 'Route not found', path });

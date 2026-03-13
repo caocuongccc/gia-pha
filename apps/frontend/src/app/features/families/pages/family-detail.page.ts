@@ -16,6 +16,7 @@ import { ChiPhaiService } from '../../../core/services/chi-phai.service';
 import { TreeViewComponent } from '../../tree-view/tree-view.component';
 import { MemberFormComponent } from '../../member-form/member-form.component';
 import { RelationFormComponent } from '../../member-form/relation-form.component';
+import { ExportButtonsComponent } from '../../tree-view/export-buttons.component';
 import { ManageChiPhaiComponent } from '../../settings/manage-chi-phai.component';
 import {
   FamilyHeaderActionsComponent,
@@ -35,7 +36,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
     TreeViewComponent,
     MemberFormComponent,
     RelationFormComponent,
-
+    ExportButtonsComponent,
     ManageChiPhaiComponent,
     FamilyHeaderActionsComponent,
   ],
@@ -346,7 +347,7 @@ type SidePanel = 'none' | 'addMember' | 'editMember' | 'relations' | 'chiPhai';
                     <!-- @if (m.birthPlace) {
                       <div class="ro-row">
                         <span class="ro-lbl">Quê quán</span
-                        ><span>{{ m.bi }}</span>
+                        ><span>{{ m.birthPlace }}</span>
                       </div>
                     } -->
                     @if (m.burialPlace) {
@@ -882,10 +883,13 @@ export class FamilyDetailPage implements OnInit, OnDestroy {
   // Chỉ OWNER được quản lý gia phả (xoá, public, chi phái, quản lý role)
   isOwner = computed(() => this.userRole() === 'OWNER');
 
-  // FIX 1: route đúng là /share/:token (không phải /public/:id)
   shareUrl = computed(() => {
     const fam = this.familySvc.selectedFamily();
-    return fam ? `${window.location.origin}/share/${fam.id}` : '';
+    if (!fam) return '';
+    // Dùng slug nếu có, fallback về UUID cũ
+    return fam.slug
+      ? `${window.location.origin}/f/${fam.slug}`
+      : `${window.location.origin}/share/${fam.id}`;
   });
 
   async togglePublic() {
