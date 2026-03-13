@@ -249,15 +249,18 @@ interface UploadFile {
                     </div>
                   </div>
 
-                  <!-- Photo masonry -->
+                  <!-- Photo grid — Facebook style -->
                   @if (post.photos.length > 0) {
-                    <div class="masonry">
+                    <div
+                      class="pg"
+                      [class]="'pg-' + Math.min(post.photos.length, 5)"
+                    >
                       @for (
-                        photo of post.photos;
+                        photo of post.photos.slice(0, 5);
                         track photo.id;
                         let i = $index
                       ) {
-                        <div class="m-item" (click)="openLb(post.photos, i)">
+                        <div class="pg-cell" (click)="openLb(post.photos, i)">
                           <img
                             [src]="photo.url"
                             [alt]="photo.caption || ''"
@@ -265,7 +268,12 @@ interface UploadFile {
                             (error)="hideImg($event)"
                           />
                           @if (photo.caption) {
-                            <div class="m-cap">{{ photo.caption }}</div>
+                            <div class="pg-cap">{{ photo.caption }}</div>
+                          }
+                          @if (i === 4 && post.photos.length > 5) {
+                            <div class="pg-more">
+                              +{{ post.photos.length - 5 }}
+                            </div>
                           }
                         </div>
                       }
@@ -379,6 +387,35 @@ interface UploadFile {
                       Drive)</span
                     ></label
                   >
+
+                  <!-- Ảnh hiện có (khi edit) -->
+                  @if (existingPhotos().length > 0) {
+                    <div class="existing-photos">
+                      <div class="ep-label">
+                        {{ existingPhotos().length }} ảnh hiện có — click ✕ để
+                        xoá
+                      </div>
+                      <div class="ep-grid">
+                        @for (
+                          p of existingPhotos();
+                          track p.id;
+                          let ei = $index
+                        ) {
+                          <div class="ep-item">
+                            <img [src]="p.url" />
+                            <button
+                              class="ep-rm"
+                              (click)="rmExisting(ei)"
+                              title="Xoá ảnh này"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  }
+
                   <div
                     class="drop-zone"
                     (click)="fileInput.click()"
@@ -501,804 +538,7 @@ interface UploadFile {
       }
     </div>
   `,
-  styles: [
-    `
-      /* ── Layout ───────────────────────────────────────────────── */
-      .page {
-        display: flex;
-        height: 100vh;
-        background: #07080f;
-        color: #e2e8f0;
-        font-family: 'Segoe UI', sans-serif;
-        overflow: hidden;
-      }
-
-      /* ── Sidebar ─────────────────────────────────────────────── */
-      .sidebar {
-        width: 220px;
-        flex-shrink: 0;
-        background: #0b0f1c;
-        border-right: 1px solid #111827;
-        display: flex;
-        flex-direction: column;
-        padding: 16px 12px;
-        gap: 6px;
-        overflow-y: auto;
-      }
-      .back-btn {
-        background: none;
-        border: 1px solid #1e293b;
-        color: #64748b;
-        border-radius: 6px;
-        padding: 6px 10px;
-        font-size: 12px;
-        cursor: pointer;
-        text-align: left;
-        margin-bottom: 8px;
-      }
-      .back-btn:hover {
-        color: #e2e8f0;
-        border-color: #334155;
-      }
-      .family-name {
-        font-size: 13px;
-        font-weight: 700;
-        color: #f1f5f9;
-        padding: 0 4px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .sidebar-label {
-        font-size: 10px;
-        color: #334155;
-        padding: 0 4px;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-bottom: 4px;
-      }
-      .sidebar-divider {
-        height: 1px;
-        background: #111827;
-        margin: 8px 0;
-      }
-
-      .filter-nav {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-      }
-      .filter-btn {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        border-radius: 8px;
-        background: none;
-        border: none;
-        color: #64748b;
-        cursor: pointer;
-        font-size: 13px;
-        text-align: left;
-        width: 100%;
-        transition:
-          background 0.15s,
-          color 0.15s;
-      }
-      .filter-btn:hover {
-        background: #111827;
-        color: #94a3b8;
-      }
-      .filter-btn.active {
-        background: #0f1e38;
-        color: #60a5fa;
-        font-weight: 600;
-      }
-      .fi-icon {
-        font-size: 14px;
-        width: 18px;
-        text-align: center;
-      }
-      .fi-count {
-        margin-left: auto;
-        font-size: 11px;
-        background: #1e293b;
-        color: #475569;
-        padding: 1px 7px;
-        border-radius: 10px;
-      }
-      .filter-btn.active .fi-count {
-        background: #1e3a6e;
-        color: #93c5fd;
-      }
-
-      .compose-btn {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 9px 12px;
-        border-radius: 8px;
-        background: #1d4ed8;
-        border: none;
-        color: #fff;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
-        width: 100%;
-        transition: background 0.15s;
-      }
-      .compose-btn:hover {
-        background: #2563eb;
-      }
-      .compose-btn.album {
-        background: #0f4c2a;
-        color: #4ade80;
-        margin-top: 4px;
-      }
-      .compose-btn.album:hover {
-        background: #166534;
-      }
-
-      .stat-row {
-        display: flex;
-        justify-content: space-between;
-        padding: 4px 4px;
-        font-size: 12px;
-        color: #475569;
-      }
-      .stat-row strong {
-        color: #64748b;
-      }
-
-      /* ── Feed ────────────────────────────────────────────────── */
-      .feed-wrap {
-        flex: 1;
-        overflow-y: auto;
-        padding: 28px;
-        background: #07080f;
-      }
-      .feed {
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-        max-width: 740px;
-        margin: 0 auto;
-      }
-
-      .spinner-wrap {
-        display: flex;
-        justify-content: center;
-        padding: 80px;
-      }
-      .big-spinner {
-        width: 36px;
-        height: 36px;
-        border: 3px solid #1e293b;
-        border-top-color: #3b82f6;
-        border-radius: 50%;
-        animation: spin 0.7s linear infinite;
-      }
-
-      .empty-state {
-        text-align: center;
-        padding: 100px 20px;
-        color: #334155;
-      }
-      .empty-icon {
-        font-size: 48px;
-        margin-bottom: 16px;
-      }
-      .empty-title {
-        font-size: 16px;
-        color: #475569;
-        margin-bottom: 8px;
-      }
-      .empty-hint {
-        font-size: 12px;
-        color: #334155;
-      }
-
-      /* ── Cards ───────────────────────────────────────────────── */
-      .card {
-        background: #0c1120;
-        border: 1px solid #111827;
-        border-radius: 14px;
-        overflow: hidden;
-        transition: border-color 0.2s;
-      }
-      .card:hover {
-        border-color: #1e293b;
-      }
-
-      .card-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        padding: 16px 18px 12px;
-      }
-      .author-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex: 1;
-        min-width: 0;
-      }
-      .av {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        object-fit: cover;
-        flex-shrink: 0;
-      }
-      .av-fb {
-        background: #1e3a6e;
-        color: #60a5fa;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 13px;
-        font-weight: 700;
-      }
-      .author-info {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-      }
-      .author-name {
-        font-size: 13px;
-        font-weight: 600;
-        color: #f1f5f9;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .post-time {
-        font-size: 11px;
-        color: #334155;
-      }
-      .type-chip {
-        font-size: 10px;
-        font-weight: 700;
-        padding: 3px 10px;
-        border-radius: 20px;
-        flex-shrink: 0;
-        margin-left: 8px;
-      }
-      .text-chip {
-        background: #0f1e38;
-        color: #60a5fa;
-      }
-      .album-chip {
-        background: #0a1a0e;
-        color: #4ade80;
-      }
-
-      .card-actions {
-        display: flex;
-        gap: 4px;
-        flex-shrink: 0;
-      }
-      .act-btn {
-        background: none;
-        border: none;
-        font-size: 14px;
-        cursor: pointer;
-        padding: 4px 6px;
-        border-radius: 5px;
-        opacity: 0.5;
-        color: #e2e8f0;
-      }
-      .act-btn:hover {
-        opacity: 1;
-        background: #1e293b;
-      }
-      .act-btn.del:hover {
-        background: #2d0a0a;
-        color: #ef4444;
-      }
-
-      /* TEXT card */
-      .post-title {
-        margin: 0 18px 8px;
-        font-size: 17px;
-        font-weight: 700;
-        color: #f8fafc;
-        line-height: 1.4;
-      }
-      .post-body {
-        padding: 0 18px 18px;
-        font-size: 14px;
-        line-height: 1.78;
-        color: #94a3b8;
-      }
-
-      /* CKEditor output styles */
-      .ck-out b,
-      .ck-out strong {
-        color: #e2e8f0;
-      }
-      .ck-out h1,
-      .ck-out h2,
-      .ck-out h3 {
-        color: #f1f5f9;
-        margin: 14px 0 6px;
-      }
-      .ck-out ul,
-      .ck-out ol {
-        padding-left: 22px;
-        margin: 8px 0;
-      }
-      .ck-out a {
-        color: #60a5fa;
-      }
-      .ck-out blockquote {
-        border-left: 3px solid #1e3a6e;
-        margin: 10px 0;
-        padding: 4px 14px;
-        color: #64748b;
-      }
-      .ck-out table {
-        border-collapse: collapse;
-        width: 100%;
-        margin: 10px 0;
-      }
-      .ck-out td,
-      .ck-out th {
-        border: 1px solid #1e293b;
-        padding: 7px 12px;
-        font-size: 13px;
-      }
-      .ck-out p {
-        margin: 6px 0;
-      }
-
-      /* ALBUM card */
-      .album-meta-row {
-        padding: 0 18px 12px;
-      }
-      .album-chips {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-top: 6px;
-      }
-      .meta-chip {
-        font-size: 11px;
-        color: #475569;
-        background: #0c1828;
-        border: 1px solid #1e293b;
-        border-radius: 12px;
-        padding: 2px 10px;
-      }
-
-      /* Masonry */
-      .masonry {
-        padding: 0 4px 16px;
-        columns: 4 120px;
-        column-gap: 4px;
-      }
-      .m-item {
-        break-inside: avoid;
-        margin-bottom: 4px;
-        border-radius: 6px;
-        overflow: hidden;
-        position: relative;
-        cursor: zoom-in;
-        background: #060d1a;
-      }
-      .m-item img {
-        width: 100%;
-        height: auto;
-        display: block;
-        transition: transform 0.25s;
-      }
-      .m-item:hover img {
-        transform: scale(1.04);
-      }
-      .m-cap {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
-        color: #e2e8f0;
-        font-size: 10px;
-        padding: 16px 8px 5px;
-      }
-
-      /* ── Lightbox ─────────────────────────────────────────────── */
-      .lb {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.94);
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .lb-img {
-        max-width: 92vw;
-        max-height: 88vh;
-        object-fit: contain;
-        border-radius: 4px;
-      }
-      .lb-x {
-        position: absolute;
-        top: 18px;
-        right: 22px;
-        background: none;
-        border: none;
-        color: #fff;
-        font-size: 24px;
-        cursor: pointer;
-        opacity: 0.6;
-      }
-      .lb-x:hover {
-        opacity: 1;
-      }
-      .lb-nav {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-        background: rgba(255, 255, 255, 0.1);
-        border: none;
-        color: #fff;
-        font-size: 36px;
-        cursor: pointer;
-        padding: 10px 16px;
-        border-radius: 8px;
-      }
-      .lb-l {
-        left: 16px;
-      }
-      .lb-r {
-        right: 16px;
-      }
-      .lb-nav:hover {
-        background: rgba(255, 255, 255, 0.2);
-      }
-      .lb-cap {
-        position: absolute;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        color: #e2e8f0;
-        font-size: 13px;
-        background: rgba(0, 0, 0, 0.55);
-        padding: 6px 18px;
-        border-radius: 20px;
-        max-width: 80vw;
-        text-overflow: ellipsis;
-        overflow: hidden;
-        white-space: nowrap;
-      }
-      .lb-n {
-        position: absolute;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        color: #64748b;
-        font-size: 12px;
-      }
-
-      /* ── Modal ───────────────────────────────────────────────── */
-      .overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.75);
-        z-index: 200;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-      }
-      .modal {
-        background: #0c1120;
-        border: 1px solid #1e293b;
-        border-radius: 16px;
-        width: 100%;
-        max-width: 680px;
-        max-height: 92vh;
-        display: flex;
-        flex-direction: column;
-      }
-      .modal-hd {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 18px 22px;
-        border-bottom: 1px solid #111827;
-        flex-shrink: 0;
-      }
-      .modal-hd h3 {
-        margin: 0;
-        font-size: 15px;
-        font-weight: 700;
-      }
-      .modal-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: 18px 22px;
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-      }
-      .modal-ft {
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-        padding: 14px 22px;
-        border-top: 1px solid #111827;
-        flex-shrink: 0;
-      }
-      .btn-cancel {
-        padding: 8px 20px;
-        background: none;
-        border: 1px solid #1e293b;
-        color: #64748b;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 13px;
-      }
-      .btn-post {
-        padding: 8px 24px;
-        background: #1d4ed8;
-        border: none;
-        color: #fff;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
-      }
-      .btn-post:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-      }
-      .btn-cancel:hover {
-        border-color: #334155;
-        color: #94a3b8;
-      }
-      .btn-post:not(:disabled):hover {
-        background: #2563eb;
-      }
-
-      /* ── Form ────────────────────────────────────────────────── */
-      .fg {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      .fg label {
-        font-size: 10px;
-        color: #475569;
-        text-transform: uppercase;
-        letter-spacing: 0.07em;
-        font-weight: 600;
-      }
-      .fi {
-        background: #060d1a;
-        border: 1px solid #1e293b;
-        color: #e2e8f0;
-        border-radius: 8px;
-        padding: 9px 13px;
-        font-size: 13px;
-        width: 100%;
-        box-sizing: border-box;
-      }
-      .fi:focus {
-        outline: none;
-        border-color: #3b82f6;
-      }
-      .two-col {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
-      }
-      .lbl-sub {
-        font-size: 10px;
-        color: #334155;
-        text-transform: none;
-        font-weight: normal;
-        letter-spacing: 0;
-      }
-      .ck-loading {
-        padding: 12px;
-        color: #475569;
-        font-size: 12px;
-        background: #060d1a;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-      }
-
-      /* CKEditor styles handled inside ck-editor.component.ts */
-
-      /* ── Upload ──────────────────────────────────────────────── */
-      .drop-zone {
-        border: 2px dashed #1e293b;
-        border-radius: 10px;
-        padding: 30px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.2s;
-      }
-      .drop-zone:hover {
-        border-color: #3b82f6;
-        background: #060d1a;
-      }
-      .dz-icon {
-        font-size: 30px;
-        margin-bottom: 10px;
-      }
-      .dz-txt {
-        font-size: 14px;
-        color: #64748b;
-        margin-bottom: 4px;
-      }
-      .dz-sub {
-        font-size: 11px;
-        color: #334155;
-      }
-
-      .upload-list {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-top: 10px;
-      }
-      .ul-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        background: #060d1a;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 8px 12px;
-        transition: border-color 0.2s;
-      }
-      .ul-done {
-        border-color: #166534;
-      }
-      .ul-busy {
-        opacity: 0.7;
-      }
-      .ul-thumb {
-        width: 42px;
-        height: 42px;
-        border-radius: 6px;
-        object-fit: cover;
-        flex-shrink: 0;
-      }
-      .ul-meta {
-        flex: 0 0 130px;
-        min-width: 0;
-      }
-      .ul-name {
-        font-size: 11px;
-        color: #64748b;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .ul-size {
-        font-size: 10px;
-        color: #334155;
-      }
-      .ul-err {
-        font-size: 10px;
-        color: #ef4444;
-        margin-top: 2px;
-      }
-      .ul-cap {
-        flex: 1;
-        font-size: 12px;
-        padding: 5px 8px !important;
-      }
-      .ul-st {
-        flex-shrink: 0;
-        width: 28px;
-        text-align: center;
-      }
-      .ul-ok {
-        color: #22c55e;
-        font-size: 16px;
-        font-weight: 700;
-      }
-
-      .upload-bar {
-        margin-top: 10px;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .up-btn {
-        width: 100%;
-        padding: 11px;
-        background: #0f1e38;
-        border: 1px solid #1d4ed8;
-        color: #60a5fa;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-      }
-      .up-btn:hover:not(:disabled) {
-        background: #1d4ed8;
-        color: #fff;
-      }
-      .up-btn:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-      }
-      .up-done {
-        text-align: center;
-        color: #22c55e;
-        font-size: 13px;
-        font-weight: 600;
-        padding: 8px;
-      }
-      .up-prog {
-        height: 3px;
-        background: #1e293b;
-        border-radius: 2px;
-        overflow: hidden;
-      }
-      .up-prog-fill {
-        height: 100%;
-        background: #3b82f6;
-        border-radius: 2px;
-        transition: width 0.4s;
-      }
-
-      .spin {
-        display: inline-block;
-        width: 13px;
-        height: 13px;
-        border: 2px solid #334155;
-        border-top-color: #3b82f6;
-        border-radius: 50%;
-        animation: spin 0.6s linear infinite;
-      }
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-
-      /* ── Toast ───────────────────────────────────────────────── */
-      .toast {
-        position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #16a34a;
-        color: #fff;
-        padding: 10px 24px;
-        border-radius: 20px;
-        font-size: 13px;
-        font-weight: 600;
-        z-index: 999;
-        animation: up 0.2s;
-        white-space: nowrap;
-      }
-      .toast.err {
-        background: #dc2626;
-      }
-      @keyframes up {
-        from {
-          opacity: 0;
-          transform: translateX(-50%) translateY(8px);
-        }
-        to {
-          opacity: 1;
-          transform: translateX(-50%) translateY(0);
-        }
-      }
-    `,
-  ],
+  styleUrls: ['./activities.page.css'],
 })
 export class ActivitiesPage implements OnInit, OnDestroy {
   private http = inject(HttpClient);
@@ -1320,6 +560,7 @@ export class ActivitiesPage implements OnInit, OnDestroy {
   // Modal
   showModal = signal(false);
   editingPost = signal<Post | null>(null);
+  existingPhotos = signal<Post['photos']>([]); // ảnh đã có khi edit
   formType = signal<PostType>('TEXT');
   formTitle = '';
   formDate = '';
@@ -1441,9 +682,12 @@ export class ActivitiesPage implements OnInit, OnDestroy {
     this.editingPost.set(post);
     this.formType.set(post.type);
     this.formTitle = post.title ?? '';
-    this.formDate = post.albumDate?.slice(0, 10) ?? '';
+    this.formDate = post.albumDate
+      ? new Date(post.albumDate).toISOString().slice(0, 10)
+      : '';
     this.formLocation = post.albumLocation ?? '';
-    this.uploadFiles.set([]);
+    this.existingPhotos.set([...(post.photos ?? [])]); // load ảnh hiện có
+    this.uploadFiles.set([]); // chỉ ảnh mới thêm
     this.ckContent = post.type === 'TEXT' ? (post.content ?? '') : '';
     this.showModal.set(true);
   }
@@ -1452,6 +696,7 @@ export class ActivitiesPage implements OnInit, OnDestroy {
     this.showModal.set(false);
     this.ckContent = '';
     this.uploadFiles.set([]);
+    this.existingPhotos.set([]);
   }
 
   // ── Upload ────────────────────────────────────────────────────
@@ -1490,69 +735,114 @@ export class ActivitiesPage implements OnInit, OnDestroy {
       l.map((f, idx) => (idx === i ? { ...f, caption: v } : f)),
     );
   }
+  rmExisting(i: number) {
+    this.existingPhotos.update((l) => l.filter((_, idx) => idx !== i));
+  }
 
   async uploadAll() {
-    const pending = this.uploadFiles().filter((f) => !f.done);
-    if (!pending.length) return;
+    const files = this.uploadFiles();
+    const pendingIndexes = files
+      .map((f, i) => (f.done ? -1 : i))
+      .filter((i) => i >= 0);
+    if (!pendingIndexes.length) return;
     this.uploading.set(true);
 
     const BATCH = 3;
-    for (let i = 0; i < this.uploadFiles().length; i += BATCH) {
-      const batch = this.uploadFiles()
-        .slice(i, i + BATCH)
-        .filter((f) => !f.done);
-      if (!batch.length) continue;
+    const uploadSessionId = `album-${Date.now()}`; // subfolder chung cho cả lần upload
+    for (let b = 0; b < pendingIndexes.length; b += BATCH) {
+      const batchIndexes = pendingIndexes.slice(b, b + BATCH);
+      const batchFiles = batchIndexes.map((i) => this.uploadFiles()[i]);
 
+      // Đánh dấu uploading theo index
       this.uploadFiles.update((l) =>
-        l.map((f) => (batch.includes(f) ? { ...f, uploading: true } : f)),
+        l.map((f, i) =>
+          batchIndexes.includes(i) ? { ...f, uploading: true, error: '' } : f,
+        ),
       );
 
-      const filesData = await Promise.all(
-        batch.map(async (uf) => {
-          const ab = await uf.file.arrayBuffer();
-          const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
-          const dim = await this.getDim(uf.preview);
-          return {
-            name: uf.file.name,
-            mimeType: uf.file.type,
-            base64: b64,
-            ...dim,
-          };
-        }),
-      );
+      // Convert sang base64
+      let filesData: any[];
+      try {
+        filesData = await Promise.all(
+          batchFiles.map(async (uf) => {
+            const b64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () =>
+                resolve((reader.result as string).split(',')[1]);
+              reader.onerror = reject;
+              reader.readAsDataURL(uf.file);
+            });
+            const dim = await this.getDim(uf.preview);
+            return {
+              name: uf.file.name,
+              mimeType: uf.file.type,
+              base64: b64,
+              ...dim,
+            };
+          }),
+        );
+      } catch (e) {
+        this.uploadFiles.update((l) =>
+          l.map((f, i) =>
+            batchIndexes.includes(i)
+              ? { ...f, uploading: false, error: 'Lỗi đọc file' }
+              : f,
+          ),
+        );
+        continue;
+      }
 
       try {
         const r: any = await this.http
           .post(`${environment.apiUrl}/api/upload`, {
             familyId: this.familyId,
+            sessionId: uploadSessionId,
             files: filesData,
           })
           .toPromise();
 
+        // Map kết quả theo thứ tự index — không dùng .find() để tránh mismatch tên file
         this.uploadFiles.update((l) =>
-          l.map((f) => {
-            if (!batch.includes(f)) return f;
-            const match = r.data.find((d: any) => d.name === f.file.name);
+          l.map((f, i) => {
+            const pos = batchIndexes.indexOf(i);
+            if (pos === -1) return f;
+            // r.data có thể là array theo thứ tự, hoặc match theo tên
+            const match = Array.isArray(r.data)
+              ? (r.data[pos] ?? r.data.find((d: any) => d.name === f.file.name))
+              : null;
             return match
               ? { ...f, uploading: false, done: true, preview: match.url }
-              : { ...f, uploading: false, error: 'Thất bại' };
+              : { ...f, uploading: false, error: 'Không nhận được URL' };
           }),
         );
       } catch (err: any) {
-        const msg = err.error?.error ?? 'Lỗi upload';
+        const msg = err?.error?.error ?? err?.message ?? 'Lỗi upload';
         this.uploadFiles.update((l) =>
-          l.map((f) =>
-            batch.includes(f) ? { ...f, uploading: false, error: msg } : f,
+          l.map((f, i) =>
+            batchIndexes.includes(i)
+              ? { ...f, uploading: false, error: msg }
+              : f,
           ),
         );
-        // Nếu lỗi Drive chưa kết nối → dừng hẳn
         if (msg.includes('Chưa kết nối') || msg.includes('Drive')) {
           this.showToast(msg, true);
           break;
         }
       }
     }
+
     this.uploading.set(false);
+
+    const doneNow = this.uploadFiles().filter((f) => f.done).length;
+    const total = this.uploadFiles().length;
+    if (doneNow === total) {
+      this.showToast(`✅ Upload xong ${doneNow} ảnh!`);
+    } else if (doneNow > 0) {
+      this.showToast(
+        `Upload ${doneNow}/${total} ảnh — ${total - doneNow} thất bại`,
+        true,
+      );
+    }
   }
 
   private getDim(src: string): Promise<{ width: number; height: number }> {
@@ -1589,13 +879,23 @@ export class ActivitiesPage implements OnInit, OnDestroy {
         ...(isAlbum && {
           albumDate: this.formDate || null,
           albumLocation: this.formLocation || null,
-          photos: this.uploadFiles()
-            .filter((f) => f.done)
-            .map((f, i) => ({
-              url: f.preview,
-              caption: f.caption || null,
+          photos: [
+            // Ảnh cũ (khi edit) — giữ nguyên
+            ...this.existingPhotos().map((p, i) => ({
+              url: p.url,
+              caption: p.caption || null,
               order: i,
+              driveFileId: p.driveFileId || null,
             })),
+            // Ảnh mới upload
+            ...this.uploadFiles()
+              .filter((f) => f.done)
+              .map((f, i) => ({
+                url: f.preview,
+                caption: f.caption || null,
+                order: this.existingPhotos().length + i,
+              })),
+          ],
         }),
       };
 
@@ -1639,6 +939,8 @@ export class ActivitiesPage implements OnInit, OnDestroy {
   }
 
   // ── Lightbox ──────────────────────────────────────────────────
+
+  readonly Math = Math;
 
   openLb(photos: Post['photos'], i: number) {
     this.lbPhotos.set(photos);

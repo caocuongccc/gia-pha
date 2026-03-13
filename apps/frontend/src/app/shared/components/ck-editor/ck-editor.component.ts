@@ -22,7 +22,7 @@ import {
   loadCKEditorCloud,
   type CKEditorCloudResult,
 } from '@ckeditor/ckeditor5-angular';
-import type { ClassicEditor, EditorConfig } from 'ckeditor5';
+import { List, Undo, type ClassicEditor, type EditorConfig } from 'ckeditor5';
 import { environment } from 'apps/frontend/src/environments/environment.prod';
 
 @Component({
@@ -132,6 +132,14 @@ import { environment } from 'apps/frontend/src/environments/environment.prod';
         border-color: #3b82f6 !important;
         box-shadow: none !important;
       }
+      /* Force LTR — tránh bị flip sang RTL như chữ Ả Rập */
+      :host ::ng-deep .ck.ck-editor__editable {
+        direction: ltr !important;
+        text-align: left !important;
+      }
+      :host ::ng-deep .ck.ck-editor__editable > * {
+        direction: ltr !important;
+      }
     `,
   ],
 })
@@ -164,23 +172,83 @@ export class CkEditorComponent
   private _setup(cloud: CKEditorCloudResult<{ version: '47.6.1' }>) {
     const {
       ClassicEditor,
+      Autosave,
       Essentials,
       Paragraph,
-      Heading,
-      Bold,
-      Italic,
-      Underline,
-      Strikethrough,
-      //   BulletedList,
-      //   NumberedList,
-      BlockQuote,
-      Link,
-      Table,
-      TableToolbar,
       Alignment,
-      Undo,
-      FontSize,
+      AutoImage,
+      Autoformat,
+      AutoLink,
+      ImageBlock,
+      BlockQuote,
+      Bold,
+      Bookmark,
+      CKBox,
+      CKBoxImageEdit,
+      CloudServices,
+      Code,
+      CodeBlock,
+      Emoji,
+      FindAndReplace,
+      FontBackgroundColor,
       FontColor,
+      FontFamily,
+      FontSize,
+      Fullscreen,
+      GeneralHtmlSupport,
+      Heading,
+      Highlight,
+      HorizontalLine,
+      HtmlEmbed,
+      ImageCaption,
+      ImageEditing,
+      ImageInsert,
+      ImageInsertViaUrl,
+      ImageResize,
+      ImageStyle,
+      ImageTextAlternative,
+      ImageToolbar,
+      ImageUpload,
+      ImageUtils,
+      ImageInline,
+      Indent,
+      IndentBlock,
+      Italic,
+      Link,
+      LinkImage,
+      List,
+      ListProperties,
+      MediaEmbed,
+      Mention,
+      PageBreak,
+      PasteFromOffice,
+      PictureEditing,
+      PlainTableOutput,
+      RemoveFormat,
+      ShowBlocks,
+      SpecialCharacters,
+      SpecialCharactersArrows,
+      SpecialCharactersCurrency,
+      SpecialCharactersEssentials,
+      SpecialCharactersLatin,
+      SpecialCharactersMathematical,
+      SpecialCharactersText,
+      Strikethrough,
+      Subscript,
+      Superscript,
+      Table,
+      TableCaption,
+      TableCellProperties,
+      TableColumnResize,
+      TableLayout,
+      TableProperties,
+      TableToolbar,
+      TextPartLanguage,
+      TextTransformation,
+      TodoList,
+      Underline,
+      WordCount,
+      BalloonToolbar,
     } = cloud.CKEditor;
 
     this.Editor = ClassicEditor;
@@ -194,8 +262,7 @@ export class CkEditorComponent
         Italic,
         Underline,
         Strikethrough,
-        //   BulletedList,
-        //   NumberedList,
+        List,
         BlockQuote,
         Link,
         Table,
@@ -217,8 +284,7 @@ export class CkEditorComponent
           'fontSize',
           'fontColor',
           '|',
-          //   'bulletedList',
-          //   'numberedList',
+          'list',
           'blockQuote',
           '|',
           'alignment',
@@ -232,6 +298,12 @@ export class CkEditorComponent
         shouldNotGroupWhenFull: false,
       },
       placeholder: this.placeholder,
+      language: {
+        // Force LTR — tránh CKEditor auto-detect nhầm tiếng Việt thành RTL
+        ui: 'en',
+        content: 'vi',
+        textPartLanguage: [{ title: 'Vietnamese', languageCode: 'vi' }],
+      },
       table: {
         contentToolbar: ['tableColumn', 'tableRow', 'mergeTableCells'],
       },

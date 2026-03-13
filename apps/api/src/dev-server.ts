@@ -27,8 +27,8 @@ console.log('='.repeat(50));
 
 import express from 'express';
 const app = express();
-app.use(express.json());
-
+// CORS phải đứng TRƯỚC body parser
+// để kể cả khi 413 xảy ra, header vẫn được gửi
 app.use((req, res, next) => {
   res.setHeader(
     'Access-Control-Allow-Origin',
@@ -42,6 +42,10 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.status(204).end();
   next();
 });
+
+// 50mb để chứa base64 ảnh (ảnh 10MB raw ≈ 13.3MB base64, batch 3 ảnh ≈ 40MB)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);

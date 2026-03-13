@@ -9,6 +9,11 @@ import { setCorsHeaders, handleOptions } from '../../src/_lib/cors';
 import { canUserUploadToDrive } from '../../src/_lib/google-oauth';
 import { uploadFileToDrive } from '../../src/_lib/google-drive';
 
+// Vercel: tăng body size limit cho upload ảnh base64
+export const config = {
+  api: { bodyParser: { sizeLimit: '50mb' } },
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   setCorsHeaders(res);
   if (req.method === 'OPTIONS') return handleOptions(req, res);
@@ -18,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = await requireAuth(req, res);
   if (!user) return;
 
-  const { familyId, postId, files } = req.body ?? {};
+  const { familyId, postId, sessionId, files } = req.body ?? {};
   if (!familyId || !Array.isArray(files) || files.length === 0) {
     return res.status(400).json({ error: 'Thiếu familyId hoặc files' });
   }
@@ -33,7 +38,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
-  const subFolder = postId ?? `upload-${Date.now()}`;
+  // sessionId dùng để nhóm tất cả ảnh của 1 lần upload vào cùng 1 subfolder
+  const subFolder = postId ?? sessionId ?? `upload-${Date.now()}`;
   const results: {
     url: string;
     driveFileId: string;
